@@ -1,3 +1,6 @@
+// ColdTs version — used for versionName and the output APK file name
+val coldtsVersionName = "1.0.0"
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -13,7 +16,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = 7
-        versionName = "1.0.0"
+        versionName = coldtsVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -75,9 +78,8 @@ android {
 // ColdTs: name the built APK file "ColdTs-Client-v<version>.apk"
 androidComponents {
     onVariants { variant ->
-        val vn = variant.versionName.orNull ?: "dev"
         variant.outputs.forEach { output ->
-            output.outputFileName.set("ColdTs-Client-v$vn.apk")
+            output.outputFileName.set("ColdTs-Client-v$coldtsVersionName.apk")
         }
     }
 }
