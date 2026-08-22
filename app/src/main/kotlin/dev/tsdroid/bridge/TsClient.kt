@@ -155,6 +155,13 @@ class TsClient {
                         client = c
                         pendingClient = null
                         _state.value = ConnectionState.CONNECTED
+                        // Ask the native client to re-sync its server state so the
+                        // channel list is complete (some servers deliver channels
+                        // lazily), then refresh the UI state again.
+                        try {
+                            c.syncState()
+                        } catch (_: Throwable) {
+                        }
                         refreshState()
                         if (client == null) {
                             throw IllegalStateException("Connection closed during initial state sync")

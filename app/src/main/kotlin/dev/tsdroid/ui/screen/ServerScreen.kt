@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.HeadsetOff
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Person
@@ -85,12 +86,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.tsdroid.han.R
+import dev.tslib.Channel
 import dev.tslib.ConnectionState
 import dev.tslib.User
-import dev.tsdroid.ui.component.AnimeBackground
+import dev.tsdroid.ui.component.AppWallpaper
+import dev.tsdroid.ui.component.ChannelInfoDialog
 import dev.tsdroid.ui.component.ChannelTree
 import dev.tsdroid.ui.component.ChatView
+import dev.tsdroid.ui.component.ClientInfoDialog
 import dev.tsdroid.ui.component.FileManagerDialog
+import dev.tsdroid.ui.component.ServerInfoDialog
 import dev.tsdroid.ui.component.ShareTarget
 import dev.tsdroid.viewmodel.ChatMessage
 import dev.tsdroid.viewmodel.DownloadState
@@ -122,9 +127,10 @@ fun ServerScreen(
     val showLinkThumbnails by viewModel.showLinkThumbnails.collectAsStateWithLifecycle()
     val autoLoadImages by viewModel.autoLoadImages.collectAsStateWithLifecycle()
     val enableFloatingWindow by viewModel.enableFloatingWindow.collectAsStateWithLifecycle()
-    val animeBackground by viewModel.animeBackground.collectAsStateWithLifecycle()
     val noiseSuppression by viewModel.noiseSuppression.collectAsStateWithLifecycle()
     val mutedUserIds by viewModel.mutedUserIds.collectAsStateWithLifecycle()
+    val friendUids by viewModel.friends.collectAsStateWithLifecycle()
+    val userVolumes by viewModel.userVolumes.collectAsStateWithLifecycle()
     val fileManagerOpen by viewModel.fileManagerOpen.collectAsStateWithLifecycle()
     val fileList by viewModel.fileList.collectAsStateWithLifecycle()
     val previewImageBytes by viewModel.previewImageBytes.collectAsStateWithLifecycle()
@@ -139,7 +145,12 @@ fun ServerScreen(
     var messageText by remember { mutableStateOf("") }
     var pmTargetId by remember { mutableStateOf<Int?>(null) }
 
-    // Whisper (瀵嗚亰) state 鈥?read directly from WhisperManager
+    // Info dialogs (classic TeamSpeak features)
+    var clientInfoTarget by remember { mutableStateOf<User?>(null) }
+    var channelInfoTarget by remember { mutableStateOf<Channel?>(null) }
+    var showServerInfo by remember { mutableStateOf(false) }
+
+    // Whisper state 鈥?read directly from WhisperManager
     val whisperTargetNames = WhisperManager.whisperTargetNames
     val whisperFirstTargetName = whisperTargetNames.firstOrNull()
 
@@ -193,18 +204,26 @@ fun ServerScreen(
     val totalUnread = unreadChannel + totalUnreadPrivate
 
     Box(modifier = Modifier.fillMaxSize()) {
-        AnimeBackground(enabled = animeBackground)
+        AppWallpaper()
 
         Scaffold(
             containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text(serverInfo?.name ?: stringResource(R.string.server)) },
+                title = {
+                    Text(
+                        text = serverInfo?.name ?: stringResource(R.string.server),
+                        modifier = Modifier.clickable { showServerInfo = true },
+                    )
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
                     scrolledContainerColor = Color.Transparent,
                 ),
                 actions = {
+                    IconButton(onClick = { showServerInfo = true }) {
+                        Icon(Icons.Default.Info, contentDescription = stringResource(R.string.server_info))
+                    }
                     IconButton(onClick = { viewModel.toggleFileManager() }) {
                         Icon(Icons.Default.Folder, contentDescription = stringResource(R.string.file_manager))
                     }
@@ -237,7 +256,7 @@ fun ServerScreen(
                             Icon(
                                 Icons.Default.ChatBubble,
                                 contentDescription = stringResource(R.string.chat),
-                                tint = Color(0xFF4CAF50),
+                                tint = MaterialTheme.colorScheme.primary,
                             )
                         }
                         if (totalUnread > 0) {
@@ -327,13 +346,13 @@ fun ServerScreen(
                         )
                     }
 
-                    // Whisper (瀵嗚亰) indicator 鈥?shows active state, click to stop
+                    // Whisper indicator 鈥?shows active state, click to stop
                     if (WhisperManager.isWhisperActive && whisperFirstTargetName != null) {
                         IconButton(onClick = { viewModel.toggleWhisper(WhisperManager.whisperTargets.first()) }) {
                             Icon(
                                 Icons.Default.Forum,
-                                contentDescription = "鍋滄瀵嗚亰",
-                                tint = Color(0xFF4CAF50),
+                                contentDescription = stringResource(R.string.stop_whisper),
+                                tint = MaterialTheme.colorScheme.tertiary,
                             )
                         }
                     } else {
@@ -343,7 +362,7 @@ fun ServerScreen(
                         ) {
                             Icon(
                                 Icons.Default.Forum,
-                                contentDescription = "瀵嗚亰",
+                                contentDescription = stringResource(R.string.whisper),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                             )
                         }
@@ -353,7 +372,7 @@ fun ServerScreen(
                     IconButton(onClick = { viewModel.toggleOutputMute() }) {
                         Icon(
                             if (isOutputMuted) Icons.Default.HeadsetOff else Icons.Default.Headset,
-                            contentDescription = stringResource(if (isOutputMuted) R.string.notif_unmute else R.string.notif_mute),
+                            contentDescription = stringResource(if (isOutputMuted) R.string.sound_unmute else R.string.sound_mute),
                             tint = if (isOutputMuted) MaterialTheme.colorScheme.error
                             else MaterialTheme.colorScheme.primary,
                         )
@@ -367,18 +386,16 @@ fun ServerScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            // Channel tree 鈥?full screen
+            // Channel tree - full screen
             ChannelTree(
                 channels = channels,
                 users = users,
                 onChannelClick = { channelId -> viewModel.moveToChannel(channelId) },
-                onUserClick = { user ->
-                    pmTargetId = user.id
-                    chatTab = 1
-                    chatOpen = true
-                },
+                onChannelLongClick = { channel -> channelInfoTarget = channel },
+                onUserClick = { user -> clientInfoTarget = user },
                 onUserLongClick = { user -> viewModel.toggleMuteUser(user.id) },
                 onWhisperClick = { userId -> viewModel.toggleWhisper(userId) },
+                friendUids = friendUids,
                 mutedUserIds = mutedUserIds,
                 channelIcons = channelIcons,
                 userAvatars = userAvatars,
@@ -482,6 +499,60 @@ fun ServerScreen(
                     )
                 }
             }
+        }
+    }
+
+    // Client info dialog (tap on a user)
+    clientInfoTarget?.let { user ->
+        ClientInfoDialog(
+            user = user,
+            channelName = channels.find { it.id == user.channelId }?.name,
+            avatar = user.uid?.let { userAvatars[it] },
+            isLocallyMuted = user.id in mutedUserIds,
+            isFriend = user.uid != null && user.uid in friendUids,
+            onToggleFriend = { viewModel.toggleFriend(user.uid) },
+            volumePercent = user.uid?.let { userVolumes[it] ?: 100 } ?: 100,
+            onVolumeChange = { pct -> viewModel.setUserVolume(user.uid, pct) },
+            onOpenChat = {
+                clientInfoTarget = null
+                pmTargetId = user.id
+                chatTab = 1
+                chatOpen = true
+            },
+            onToggleMute = {
+                viewModel.toggleMuteUser(user.id)
+                clientInfoTarget = null
+            },
+            onToggleWhisper = {
+                viewModel.toggleWhisper(user.id)
+                clientInfoTarget = null
+            },
+            onDismiss = { clientInfoTarget = null },
+        )
+    }
+
+    // Channel info dialog (long-press on a channel)
+    channelInfoTarget?.let { channel ->
+        val myClientId = viewModel.myClientId
+        ChannelInfoDialog(
+            channel = channel,
+            userCount = users.count { it.channelId == channel.id },
+            isCurrentChannel = users.find { it.id == myClientId }?.channelId == channel.id,
+            onSwitch = {
+                viewModel.moveToChannel(channel.id)
+                channelInfoTarget = null
+            },
+            onDismiss = { channelInfoTarget = null },
+        )
+    }
+
+    // Server info dialog (tap server name / info button)
+    serverInfo?.let { info ->
+        if (showServerInfo) {
+            ServerInfoDialog(
+                serverInfo = info,
+                onDismiss = { showServerInfo = false },
+            )
         }
     }
 
@@ -676,7 +747,7 @@ fun ChatPanel(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            text = "瀵嗚亰 ${whisperTargetName}",
+                            text = "${stringResource(R.string.whisper)} ${whisperTargetName}",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
@@ -722,7 +793,7 @@ fun ChatPanel(
                         Text(
                             when {
                                 isWhisperActive && whisperTargetName != null ->
-                                    "瀵嗚亰 ${whisperTargetName}..."
+                                    "${stringResource(R.string.whisper)} ${whisperTargetName}..."
                                 chatTab == 0 -> stringResource(R.string.message_channel_placeholder)
                                 else -> stringResource(R.string.message_private_placeholder, pmTarget?.nickname ?: "?")
                             }

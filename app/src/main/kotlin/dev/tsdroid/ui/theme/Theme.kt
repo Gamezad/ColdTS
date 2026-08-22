@@ -170,17 +170,93 @@ fun generateColorScheme(seed: Color, isDark: Boolean): androidx.compose.material
     }
 }
 
+// ---------------------------------------------------------------------------
+// ColdTs ice-blue palette
+// A frosty Material 3 scheme used as the app's signature look.
+// ---------------------------------------------------------------------------
+
+private val IceLightColors = lightColorScheme(
+    primary = Color(0xFF0288D1),            // deep ice blue
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFD2EBFF),   // pale glacier
+    onPrimaryContainer = Color(0xFF003A5C),
+    secondary = Color(0xFF4A6E8A),          // steel blue
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFD3E6F7),
+    onSecondaryContainer = Color(0xFF0E3348),
+    tertiary = Color(0xFF00A8C4),           // glacial cyan
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFB3F0FF),
+    onTertiaryContainer = Color(0xFF00363D),
+    error = Color(0xFFB3261E),
+    onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFFF9DEDC),
+    onErrorContainer = Color(0xFF410E0B),
+    background = Color(0xFFF7FAFD),         // ice white
+    onBackground = Color(0xFF171C20),
+    surface = Color(0xFFF7FAFD),
+    onSurface = Color(0xFF171C20),
+    surfaceVariant = Color(0xFFDCE4EC),
+    onSurfaceVariant = Color(0xFF40484F),
+    outline = Color(0xFF70787F),
+    outlineVariant = Color(0xFFC0C8D0),
+    inverseSurface = Color(0xFF2C3136),
+    inverseOnSurface = Color(0xFFEFF1F4),
+    inversePrimary = Color(0xFF86CAE8),
+    surfaceDim = Color(0xFFD7DAE0),
+    surfaceBright = Color(0xFFF7FAFD),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF1F4F8),
+    surfaceContainer = Color(0xFFEBEFF4),
+    surfaceContainerHigh = Color(0xFFE5EAEF),
+    surfaceContainerHighest = Color(0xFFDFE4E9),
+)
+
+private val IceDarkColors = darkColorScheme(
+    primary = Color(0xFF86CAE8),            // frost blue
+    onPrimary = Color(0xFF00344A),
+    primaryContainer = Color(0xFF084A6B),
+    onPrimaryContainer = Color(0xFFC4E7FF),
+    secondary = Color(0xFFB3CBD9),
+    onSecondary = Color(0xFF1E333F),
+    secondaryContainer = Color(0xFF354956),
+    onSecondaryContainer = Color(0xFFCFE1EF),
+    tertiary = Color(0xFF4DD8EC),
+    onTertiary = Color(0xFF00363E),
+    tertiaryContainer = Color(0xFF004F5A),
+    onTertiaryContainer = Color(0xFFB3F0FF),
+    error = Color(0xFFF2B8B5),
+    onError = Color(0xFF601410),
+    errorContainer = Color(0xFF8C1D18),
+    onErrorContainer = Color(0xFFF9DEDC),
+    background = Color(0xFF0E1418),         // polar night
+    onBackground = Color(0xFFDEE3E7),
+    surface = Color(0xFF0E1418),
+    onSurface = Color(0xFFDEE3E7),
+    surfaceVariant = Color(0xFF40484F),
+    onSurfaceVariant = Color(0xFFC0C8D0),
+    outline = Color(0xFF8A9299),
+    outlineVariant = Color(0xFF40484F),
+    inverseSurface = Color(0xFFDEE3E7),
+    inverseOnSurface = Color(0xFF2C3136),
+    inversePrimary = Color(0xFF0288D1),
+    surfaceDim = Color(0xFF0E1418),
+    surfaceBright = Color(0xFF343A3F),
+    surfaceContainerLowest = Color(0xFF090F13),
+    surfaceContainerLow = Color(0xFF161C21),
+    surfaceContainer = Color(0xFF1A2025),
+    surfaceContainerHigh = Color(0xFF242A2F),
+    surfaceContainerHighest = Color(0xFF2F353A),
+)
+
 @Composable
 fun TsDroidTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     seedColor: Color? = null,
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = if (seedColor != null) {
-        generateColorScheme(seedColor, darkTheme)
-    } else {
-        generateColorScheme(Color(0xFF6750A4), darkTheme)
-    }
+    // ColdTs always uses its signature ice-blue palette.
+    val colorScheme = if (darkTheme) IceDarkColors else IceLightColors
 
     MaterialTheme(
         colorScheme = colorScheme,

@@ -26,7 +26,12 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -59,6 +64,7 @@ fun UserItem(
     onToggleMute: (() -> Unit)? = null,
     onWhisperClick: ((Int) -> Unit)? = null,
     isLocallyMuted: Boolean = false,
+    isFriend: Boolean = false,
 ) {
     Box(modifier = modifier) {
         Row(
@@ -91,6 +97,41 @@ fun UserItem(
             )
 
             // Detail status icons on the right
+            // Friend badge
+            if (isFriend) {
+                Icon(
+                    Icons.Default.Favorite,
+                    contentDescription = stringResource(R.string.friend),
+                    modifier = Modifier.size(14.dp),
+                    tint = Color(0xFFEC407A),
+                )
+                Spacer(Modifier.width(2.dp))
+            }
+            // Server Admin badge (default TS3 server group id 6)
+            if (user.serverGroups?.contains(6L) == true) {
+                Icon(
+                    Icons.Default.Shield,
+                    contentDescription = stringResource(R.string.group_server_admin),
+                    modifier = Modifier.size(14.dp),
+                    tint = Color(0xFF4FC3F7),
+                )
+                Spacer(Modifier.width(2.dp))
+            }
+            // Channel group badge with icon (default TS3 channel groups)
+            when (user.channelGroup) {
+                5L -> { // Channel Admin
+                    Icon(Icons.Default.Star, contentDescription = stringResource(R.string.group_channel_admin), modifier = Modifier.size(14.dp), tint = Color(0xFFFFC107))
+                    Spacer(Modifier.width(2.dp))
+                }
+                6L -> { // Operator
+                    Icon(Icons.Default.VerifiedUser, contentDescription = stringResource(R.string.group_operator), modifier = Modifier.size(14.dp), tint = Color(0xFF4FC3F7))
+                    Spacer(Modifier.width(2.dp))
+                }
+                7L -> { // Voice
+                    Icon(Icons.Default.Mic, contentDescription = stringResource(R.string.group_voice), modifier = Modifier.size(14.dp), tint = Color(0xFF66BB6A))
+                    Spacer(Modifier.width(2.dp))
+                }
+            }
             if (user.isRecording) {
                 Icon(
                     Icons.Default.RadioButtonChecked,
@@ -139,9 +180,9 @@ fun UserItem(
                 ) {
                     Icon(
                         Icons.Default.Forum,
-                        contentDescription = "密聊",
+                        contentDescription = stringResource(R.string.whisper),
                         modifier = Modifier.size(16.dp),
-                        tint = if (WhisperManager.isWhisperActive && WhisperManager.whisperTargets.contains(user.id)) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        tint = if (WhisperManager.isWhisperActive && WhisperManager.whisperTargets.contains(user.id)) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     )
                 }
             }

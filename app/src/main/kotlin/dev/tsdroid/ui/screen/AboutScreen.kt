@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import dev.tsdroid.data.SettingsStore
 import dev.tsdroid.han.R
-import dev.tsdroid.ui.component.AnimeBackground
+import dev.tsdroid.ui.component.AppWallpaper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -37,10 +37,9 @@ private data class GitHubContributor(
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val repoUrl = "https://github.com/YUAXI/TS6_Droid_CN"
+    val repoUrl = "https://github.com/Gamezad/ColdTS"
     val scrollState = rememberScrollState()
     val settingsStore = remember { SettingsStore(context) }
-    val animeBackground by settingsStore.animeBackground.collectAsStateWithLifecycle(initialValue = true)
 
     var contributors by remember { mutableStateOf<List<GitHubContributor>>(emptyList()) }
     var isLoadingContributors by remember { mutableStateOf(true) }
@@ -48,7 +47,7 @@ fun AboutScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             try {
-                val url = URL("https://api.github.com/repos/YUAXI/TS6_Droid_CN/contributors")
+                val url = URL("https://api.github.com/repos/Gamezad/ColdTS/contributors")
                 val conn = url.openConnection()
                 conn.connectTimeout = 10000
                 conn.readTimeout = 10000
@@ -74,7 +73,7 @@ fun AboutScreen(onBack: () -> Unit) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        AnimeBackground(enabled = animeBackground)
+        AppWallpaper()
 
         Column(
             modifier = Modifier

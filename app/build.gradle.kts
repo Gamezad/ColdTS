@@ -9,13 +9,18 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.yuaxi.ts6droid.cn"
+        applicationId = "com.gamezad.coldts"
         minSdk = 29
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.1.0-Han"
+        versionCode = 7
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            // libtslib_jni.so is only prebuilt for these ABIs
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     signingConfigs {
@@ -65,7 +70,28 @@ android {
             java.srcDirs("src/main/java", "src/main/kotlin")
         }
     }
+
+    // ColdTs: name the built APK file ColdTs-Client-v1.0.0.apk
+    applicationVariants.all {
+        outputs.all {
+            (this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl)
+                ?.outputFileName = "ColdTs-Client-v1.0.0.apk"
+        }
+    }
 }
+
+// Keep a legacy-named copy (app-debug.apk) so older CI artifact paths keep working.
+val mirrorLegacyApkName = tasks.register("mirrorLegacyApkName") {
+    doLast {
+        val outDir = File(projectDir, "build/outputs/apk/debug")
+        val main = outDir.listFiles()?.firstOrNull { it.isFile && it.name.startsWith("ColdTs-Client") } ?: return@doLast
+        main.copyTo(File(outDir, "app-debug.apk"), overwrite = true)
+    }
+}
+afterEvaluate {
+    tasks.named("assembleDebug") { finalizedBy(mirrorLegacyApkName) }
+}
+
 
 // Task to build Rust native libraries via cargo-ndk
 tasks.register<Exec>("buildRustLibs") {

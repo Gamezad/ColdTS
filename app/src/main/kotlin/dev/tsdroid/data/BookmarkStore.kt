@@ -18,6 +18,34 @@ class BookmarkStore(private val context: Context) {
         private val KEY_BOOKMARKS = stringPreferencesKey("bookmarks_json")
         private val KEY_AUTO_RECONNECT = booleanPreferencesKey("auto_reconnect")
         private val KEY_LAST_BOOKMARK_ADDRESS = stringPreferencesKey("last_bookmark_address")
+        private val KEY_SEEDED = booleanPreferencesKey("default_bookmark_seeded")
+
+        /** Preseeded community server shown on first launch. */
+        const val DEFAULT_SERVER_NAME = "ColdGame"
+        const val DEFAULT_SERVER_ADDRESS = "ts.coldgame.ir"
+    }
+
+    /**
+     * One-time seeding: on first launch, if the user has no bookmarks yet,
+     * add the ColdGame community server with the default nickname.
+     */
+    suspend fun ensureDefaultBookmark() {
+        context.dataStore.edit { prefs ->
+            if (prefs[KEY_SEEDED] == true) return@edit
+            prefs[KEY_SEEDED] = true
+            val current = parseBookmarks(prefs[KEY_BOOKMARKS] ?: "[]")
+            if (current.isEmpty()) {
+                prefs[KEY_BOOKMARKS] = serializeBookmarks(
+                    listOf(
+                        ServerBookmark(
+                            name = DEFAULT_SERVER_NAME,
+                            address = DEFAULT_SERVER_ADDRESS,
+                            nickname = SettingsStore.DEFAULT_NICKNAME,
+                        )
+                    )
+                )
+            }
+        }
     }
 
     val bookmarks: Flow<List<ServerBookmark>> = context.dataStore.data.map { prefs ->

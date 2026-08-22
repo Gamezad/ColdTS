@@ -20,6 +20,7 @@ import dev.tsdroid.bridge.nicknameWithCollisionSuffix
 import dev.tsdroid.han.R
 import dev.tsdroid.data.BookmarkStore
 import dev.tsdroid.data.ServerBookmark
+import dev.tsdroid.data.SettingsStore
 import dev.tsdroid.service.TsConnectionService
 import dev.tslib.Channel
 import dev.tslib.ChannelTree
@@ -46,6 +47,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private val bookmarkStore = BookmarkStore(application)
+    private val settingsStore = SettingsStore(application)
 
     val bookmarks: StateFlow<List<ServerBookmark>> = bookmarkStore.bookmarks
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -70,6 +72,14 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
     val bookmarkIcons: StateFlow<Map<Long, ImageBitmap>> = _bookmarkIcons.asStateFlow()
 
     init {
+        // Seed the default bookmark (first launch) and restore the remembered
+        // default nickname so the user only ever types it once.
+        viewModelScope.launch {
+            bookmarkStore.ensureDefaultBookmark()
+            if (nickname.value.isBlank()) {
+                nickname.value = settingsStore.defaultNickname.first()
+            }
+        }
         // Load bookmark icons from disk cache
         viewModelScope.launch {
             bookmarkStore.bookmarks.collect { list ->
@@ -177,6 +187,8 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
 
                 if (connectionFailure == null) {
                     _connectionState.value = ConnectionState.CONNECTED
+                    // Remember the nickname used as the new default for next time
+                    settingsStore.setDefaultNickname(nick)
                     onConnected()
                 } else {
                     _connectionState.value = ConnectionState.DISCONNECTED
@@ -420,14 +432,15 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun showFloatingWindow() {
-        if (_connectionState.value != ConnectionState.CONNECTED) {
-            Log.d(TAG, "showFloatingWindow skipped: not connected (state=${_connectionState.value})")
+        // Check the LIVE service connection — the cached state can be stale
+        // after an unexpected disconnect, and the overlay must never show then.
+        val service = TsConnectionService.instance
+        if (service == null || !service.hasActiveConnection()) {
+            Log.d(TAG, "showFloatingWindow skipped: no active connection")
             return
         }
         Log.d(TAG, "showFloatingWindow: connected, invoking overlay")
-        TsConnectionService.instance?.showFloatingWindow() ?: run {
-            Log.d(TAG, "showFloatingWindow: no instance, cannot show overlay")
-        }
+        service.showFloatingWindow()
     }
 
     fun hideFloatingWindow() {

@@ -4,8 +4,10 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Headset icon -->
+    <!-- ColdTs snowflake -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,30c-11.05,0 -20,8.95 -20,20v14c0,2.21 1.79,4 4,4h4v-16h-4v-2c0-8.84 7.16,-16 16,-16s16,7.16 16,16v2h-4v16h4c2.21,0 4,-1.79 4,-4V50c0,-11.05 -8.95,-20 -20,-20z"/>
+        android:pathData="M54.00,78.00L54.00,30.00 M54.00,70.50L48.34,64.84 M54.00,70.50L59.66,64.84 M54.00,37.50L59.66,31.84 M54.00,37.50L48.34,31.84 M33.22,66.00L74.78,42.00 M39.71,62.25L41.78,54.52 M39.71,62.25L47.44,64.32 M68.29,45.75L76.02,47.82 M68.29,45.75L70.36,38.02 M33.22,42.00L74.78,66.00 M39.71,45.75L47.44,43.68 M39.71,45.75L41.78,53.48 M68.29,62.25L70.36,69.98 M68.29,62.25L76.02,60.18"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round"/>
 </vector>

@@ -16,7 +16,6 @@ import dev.tsdroid.viewmodel.ConnectionViewModel
 import dev.tsdroid.ui.theme.TsDroidTheme
 import dev.tsdroid.ui.screen.AppNavigation
 import dev.tsdroid.ui.screen.SplashScreen
-import dev.tsdroid.ui.component.AnimeWallpaperState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -32,12 +31,17 @@ class MainActivity : ComponentActivity() {
         val languageTag = runBlocking(Dispatchers.IO) {
             SettingsStore(newBase).language.first()
         }
-        val locale = java.util.Locale.forLanguageTag(languageTag)
-        java.util.Locale.setDefault(locale)
-        val config = newBase.resources.configuration
-        config.setLocale(locale)
-        config.setLocales(android.os.LocaleList(locale))
-        val updatedContext = newBase.createConfigurationContext(config)
+        val updatedContext = if (languageTag == "system" || languageTag.isBlank()) {
+            // Follow the phone's system language
+            newBase
+        } else {
+            val locale = java.util.Locale.forLanguageTag(languageTag)
+            java.util.Locale.setDefault(locale)
+            val config = android.content.res.Configuration(newBase.resources.configuration)
+            config.setLocale(locale)
+            config.setLocales(android.os.LocaleList(locale))
+            newBase.createConfigurationContext(config)
+        }
         super.attachBaseContext(updatedContext)
     }
 
@@ -46,9 +50,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             var showSplash by remember { mutableStateOf(true) }
-            val seedColor = AnimeWallpaperState.dominantColor.value
 
-            TsDroidTheme(seedColor = if (showSplash) null else seedColor) {
+            TsDroidTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     if (showSplash) {
                         SplashScreen(onReady = { showSplash = false })

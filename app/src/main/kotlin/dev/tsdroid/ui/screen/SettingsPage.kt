@@ -3,13 +3,11 @@ package dev.tsdroid.ui.screen
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.content.Context
-import androidx.compose.foundation.background
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
@@ -19,16 +17,11 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import dev.tsdroid.data.SettingsStore
 import dev.tsdroid.han.R
-import dev.tsdroid.ui.component.SettingsCacheSizeHelper
-import dev.tsdroid.ui.component.WallpaperCacheManager
 import kotlinx.coroutines.launch
 
 @Composable
@@ -43,18 +36,19 @@ fun SettingsPage(
     val showLinkThumbnails by settingsStore.showLinkThumbnails.collectAsStateWithLifecycle(initialValue = false)
     val autoLoadImages by settingsStore.autoLoadImages.collectAsStateWithLifecycle(initialValue = true)
     val enableFloatingWindow by settingsStore.enableFloatingWindow.collectAsStateWithLifecycle(initialValue = false)
-    val animeBackground by settingsStore.animeBackground.collectAsStateWithLifecycle(initialValue = true)
     val noiseSuppression by settingsStore.noiseSuppression.collectAsStateWithLifecycle(initialValue = true)
     val audioGain by settingsStore.audioGain.collectAsStateWithLifecycle(initialValue = 1.0f)
 
     val languageOptions = listOf(
-        "zh" to stringResource(R.string.language_simplified_chinese),
+        "system" to stringResource(R.string.language_system),
         "en" to stringResource(R.string.language_english),
+        "fa" to stringResource(R.string.language_persian),
+        "zh" to stringResource(R.string.language_simplified_chinese),
         "fr" to stringResource(R.string.language_french),
     )
-    val selectedLanguageTag by settingsStore.language.collectAsStateWithLifecycle(initialValue = "zh")
+    val selectedLanguageTag by settingsStore.language.collectAsStateWithLifecycle(initialValue = "system")
     val selectedLanguageLabel = languageOptions.firstOrNull { it.first == selectedLanguageTag }?.second
-        ?: stringResource(R.string.language_simplified_chinese)
+        ?: stringResource(R.string.language_system)
     var languageMenuExpanded by remember { mutableStateOf(false) }
     var pendingLanguageTag by remember { mutableStateOf<String?>(null) }
     val activity = context as? Activity
@@ -207,173 +201,62 @@ fun SettingsPage(
             )
         }
 
-        // Anime background
+        // Custom wallpaper: user-picked image + adjustable opacity
+        val wallpaperPath by settingsStore.wallpaperPath.collectAsStateWithLifecycle(initialValue = "")
+        val wallpaperOpacity by settingsStore.wallpaperOpacity.collectAsStateWithLifecycle(initialValue = 0.35f)
+        val wallpaperPicker = rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument()
+        ) { uri ->
+            if (uri != null) {
+                scope.launch { settingsStore.setWallpaperFromUri(uri) }
+            }
+        }
+
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { wallpaperPicker.launch(arrayOf("image/*")) }
+                .padding(vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = stringResource(R.string.anime_background),
+                text = stringResource(R.string.wallpaper_title),
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f),
             )
-            Switch(
-                checked = animeBackground,
-                onCheckedChange = { scope.launch { settingsStore.setAnimeBackground(it) } },
+            Text(
+                text = if (wallpaperPath.isBlank()) stringResource(R.string.wallpaper_choose)
+                else stringResource(R.string.wallpaper_change),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
-        // Wallpaper cache settings (only when anime background enabled)
-        if (animeBackground) {
-            val cacheSizeMB = remember { mutableFloatStateOf(WallpaperCacheManager.getCacheSizeMB()) }
-            val cacheCount = remember { mutableIntStateOf(WallpaperCacheManager.getCachedFilesCount()) }
-            val maxSize = remember { mutableLongStateOf(SettingsCacheSizeHelper.getMaxCacheSize(context)) }
-            var showCacheViewer by remember { mutableStateOf(false) }
-            var showClearConfirm by remember { mutableStateOf(false) }
-
-            // Clear cache confirmation dialog
-            if (showClearConfirm) {
-                AlertDialog(
-                    onDismissRequest = { showClearConfirm = false },
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    title = { Text(stringResource(R.string.wallpaper_clear_cache)) },
-                    text = { Text(stringResource(R.string.wallpaper_clear_cache_confirm)) },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            WallpaperCacheManager.clearCache()
-                            cacheSizeMB.floatValue = 0f
-                            cacheCount.intValue = 0
-                            showClearConfirm = false
-                        }) {
-                            Text(stringResource(R.string.confirm), color = MaterialTheme.colorScheme.error)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showClearConfirm = false }) {
-                            Text(stringResource(R.string.cancel))
-                        }
-                    },
-                )
-            }
-
-            // Cache viewer dialog
-            if (showCacheViewer) {
-                val cachedFiles = remember { mutableStateListOf(*WallpaperCacheManager.getCachedFiles().toTypedArray()) }
-                AlertDialog(
-                    onDismissRequest = { showCacheViewer = false },
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    title = {
-                        Text("${stringResource(R.string.wallpaper_view_cache)} (${cachedFiles.size})")
-                    },
-                    text = {
-                        if (cachedFiles.isEmpty()) {
-                            Text(stringResource(R.string.wallpaper_cache_empty))
-                        } else {
-                            LazyVerticalGrid(
-                                columns = GridCells.Fixed(3),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                items(cachedFiles.size, key = { cachedFiles[it].name }) { index ->
-                                    val file = cachedFiles[index]
-                                    Box(
-                                        modifier = Modifier
-                                            .aspectRatio(1f)
-                                            .clip(MaterialTheme.shapes.medium)
-                                            .clickable {
-                                                WallpaperCacheManager.deleteFile(file)
-                                                cachedFiles.removeAt(index)
-                                                cacheSizeMB.floatValue = WallpaperCacheManager.getCacheSizeMB()
-                                                cacheCount.intValue = WallpaperCacheManager.getCachedFilesCount()
-                                            },
-                                    ) {
-                                        AsyncImage(
-                                            model = file,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
-                                        Icon(
-                                            Icons.Default.Close,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .padding(4.dp)
-                                                .size(16.dp)
-                                                .background(
-                                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                                    CircleShape
-                                                )
-                                                .padding(2.dp),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { showCacheViewer = false }) {
-                            Text(stringResource(R.string.close))
-                        }
-                    },
-                )
-            }
-
-            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        if (wallpaperPath.isNotBlank()) {
+            // Opacity slider
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
                 Text(
-                    text = stringResource(R.string.wallpaper_cache_size, String.format("%.1f", cacheSizeMB.floatValue), cacheCount.intValue),
+                    text = "${stringResource(R.string.wallpaper_opacity)} : ${stringResource(R.string.percent_format, (wallpaperOpacity * 100).toInt())}",
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.wallpaper_max_cache, maxSize.longValue),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Slider(
-                    value = maxSize.longValue.toFloat(),
-                    onValueChange = { v ->
-                        maxSize.longValue = v.toLong()
-                    },
-                    onValueChangeFinished = {
-                        SettingsCacheSizeHelper.setMaxCacheSize(context, maxSize.longValue)
-                    },
-                    valueRange = 10f..500f,
-                    steps = 48,
+                    value = wallpaperOpacity,
+                    onValueChange = { scope.launch { settingsStore.setWallpaperOpacity(it) } },
+                    valueRange = 0f..1f,
                 )
             }
 
-            // View cache
+            // Remove wallpaper
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { showCacheViewer = true }
+                    .clickable { scope.launch { settingsStore.clearWallpaper() } }
                     .padding(vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = stringResource(R.string.wallpaper_view_cache),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = "${cacheCount.intValue} ${stringResource(R.string.wallpaper_cache_images)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            // Clear cache
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showClearConfirm = true }
-                    .padding(vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.wallpaper_clear_cache),
+                    text = stringResource(R.string.wallpaper_remove),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -514,7 +397,7 @@ fun SettingsPage(
                         updateInfo = null
                         updateError = null
                         scope.launch {
-                            val result = dev.tsdroid.update.UpdateChecker.checkForUpdate(versionName)
+                            val result = dev.tsdroid.update.UpdateChecker.checkForUpdate(versionName, context)
                             updateInfo = result.update
                             updateError = result.error
                             if (result.update != null) {
@@ -532,7 +415,7 @@ fun SettingsPage(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "TS6 Droid v$versionName",
+                text = "${stringResource(R.string.app_name)} v$versionName",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),

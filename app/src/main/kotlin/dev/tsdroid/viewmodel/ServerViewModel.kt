@@ -96,6 +96,41 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
     private var audioBridge: AudioBridge? = null
     private var connectionService: TsConnectionService? = null
 
+    /** Client ID of the local user on the current server (null while not connected). */
+    val myClientId: Int? get() = tsClient?.clientId
+
+    /** Unique IDs of users marked as friends (persisted). */
+    val friends: StateFlow<Set<String>> = settingsStore.friends
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    /** Per-user playback volume in percent (0..150), keyed by unique id. */
+    val userVolumes: StateFlow<Map<String, Int>> = settingsStore.userVolumes
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    @Volatile
+    private var currentUserVolumes: Map<String, Int> = emptyMap()
+
+    private fun applyUserVolumes() {
+        val bridge = audioBridge ?: return
+        val byUid = currentUserVolumes
+        if (byUid.isEmpty()) {
+            bridge.setUserGains(emptyMap())
+            return
+        }
+        val gains = HashMap<Int, Float>()
+        for (u in _users.value) {
+            val uid = u.uid ?: continue
+            val pct = byUid[uid] ?: continue
+            gains[u.id] = (pct / 100f).coerceIn(0f, 1.5f)
+        }
+        bridge.setUserGains(gains)
+    }
+
+    fun setUserVolume(uid: String?, percent: Int) {
+        if (uid.isNullOrBlank()) return
+        viewModelScope.launch { settingsStore.setUserVolume(uid, percent) }
+    }
+
     private val _channels = MutableStateFlow<List<Channel>>(emptyList())
     val channels: StateFlow<List<Channel>> = _channels.asStateFlow()
 
@@ -161,9 +196,6 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     val enableFloatingWindow: StateFlow<Boolean> = settingsStore.enableFloatingWindow
-        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
-
-    val animeBackground: StateFlow<Boolean> = settingsStore.animeBackground
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     val noiseSuppression: StateFlow<Boolean> = settingsStore.noiseSuppression
@@ -261,6 +293,15 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
 
             tsClient = service.tsClient
             audioBridge = service.audioBridge
+            viewModelScope.launch {
+                settingsStore.userVolumes.collect { vols ->
+                    currentUserVolumes = vols
+                    applyUserVolumes()
+                }
+            }
+            viewModelScope.launch {
+                _users.collect { applyUserVolumes() }
+            }
             audioBridge?.setMutedUserIds(_mutedUserIds.value)
             connectionService = service
             queriedPermChannels.clear()
@@ -643,8 +684,9 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch { settingsStore.setEnableFloatingWindow(enabled) }
     }
 
-    fun setAnimeBackground(enabled: Boolean) {
-        viewModelScope.launch { settingsStore.setAnimeBackground(enabled) }
+    fun toggleFriend(uid: String?) {
+        if (uid.isNullOrBlank()) return
+        viewModelScope.launch { settingsStore.toggleFriend(uid) }
     }
 
     fun setNoiseSuppression(enabled: Boolean) {

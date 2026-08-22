@@ -2,7 +2,6 @@ package dev.tsdroid.ui.component
 
 import android.util.Log
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,7 +26,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import dev.tslib.Channel
-import dev.tslib.ChannelTree as JChannelTree
 import dev.tslib.User
 
 sealed class TreeItem {
@@ -40,12 +38,14 @@ fun ChannelTree(
     channels: List<Channel>,
     users: List<User>,
     onChannelClick: (Long) -> Unit,
+    onChannelLongClick: ((Channel) -> Unit)? = null,
     onUserClick: ((User) -> Unit)? = null,
     onUserLongClick: ((User) -> Unit)? = null,
     mutedUserIds: Set<Int> = emptySet(),
     channelIcons: Map<Long, ImageBitmap> = emptyMap(),
     userAvatars: Map<String, ImageBitmap> = emptyMap(),
     onWhisperClick: ((Int) -> Unit)? = null,
+    friendUids: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
 ) {
     // Filter nulls early — JNI arrays can contain null elements
@@ -60,6 +60,12 @@ fun ChannelTree(
         safeUsers.groupingBy { it.channelId }.eachCount()
     }
 
+    // TeamSpeak channel names are conventionally laid out left-to-right — keep
+    // the tree LTR even when the app language is RTL (e.g. Persian).
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalLayoutDirection provides
+            androidx.compose.ui.unit.LayoutDirection.Ltr,
+    ) {
     LazyColumn(modifier = modifier) {
         items(treeItems, key = { item ->
             when (item) {
@@ -73,6 +79,7 @@ fun ChannelTree(
                     depth = item.depth,
                     userCount = userCountByChannel[item.channel.id] ?: 0,
                     onClick = { onChannelClick(item.channel.id) },
+                    onLongClick = onChannelLongClick?.let { handler -> { handler(item.channel) } },
                     icon = channelIcons[item.channel.iconId],
                 )
                 is TreeItem.UserNode -> UserItem(
@@ -83,24 +90,31 @@ fun ChannelTree(
                     onToggleMute = onUserLongClick?.let { { it(item.user) } },
                     isLocallyMuted = item.user.id in mutedUserIds,
                     onWhisperClick = onWhisperClick,
+                    isFriend = item.user.uid != null && item.user.uid in friendUids,
                 )
             }
         }
     }
+    }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChannelRow(
     channel: Channel,
     depth: Int,
     userCount: Int,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     icon: ImageBitmap? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .padding(
                 start = (depth * 24).dp,
                 top = 6.dp,
@@ -147,29 +161,46 @@ private fun buildTreeItems(channels: List<Channel>, users: List<User>): List<Tre
     val safeChannels = channels.filterNotNull()
     @Suppress("USELESS_CAST")
     val safeUsers = users.filterNotNull()
-
     if (safeChannels.isEmpty()) return emptyList()
 
-    val tree = JChannelTree.fromChannels(safeChannels.toTypedArray())
+    val byParent = safeChannels.groupBy { it.parentId }
     val usersByChannel = safeUsers.groupBy { it.channelId }
+    val knownIds = safeChannels.map { it.id }.toHashSet()
 
-    Log.d("ChannelTree", "usersByChannel keys: ${usersByChannel.keys}, channel ids: ${safeChannels.map { it.id }}")
+    // Roots are top-level channels (parentId == 0) PLUS any orphan whose parent
+    // is missing from the server list — previously those were silently dropped,
+    // which is why not all channels were shown. Sorted by server order.
+    val roots = safeChannels
+        .filter { it.parentId == 0L || it.parentId !in knownIds }
+        .sortedWith(compareBy({ it.order }, { it.id }))
 
     val items = mutableListOf<TreeItem>()
+    val visited = HashSet<Long>()
 
     fun addChannel(channel: Channel, depth: Int) {
+        if (!visited.add(channel.id)) return  // cycle guard
         items.add(TreeItem.ChannelNode(channel, depth))
-        // Add users in this channel
         usersByChannel[channel.id]?.forEach { user ->
             items.add(TreeItem.UserNode(user, depth + 1))
         }
-        // Add sub-channels (filter nulls from JNI array)
-        tree.getChildren(channel.id)?.filterNotNull()?.forEach { child ->
-            addChannel(child, depth + 1)
-        }
+        byParent[channel.id]
+            ?.sortedWith(compareBy({ it.order }, { it.id }))
+            ?.forEach { child -> addChannel(child, depth + 1) }
     }
 
-    tree.roots?.filterNotNull()?.forEach { root -> addChannel(root, 0) }
-    tree.close()
+    roots.forEach { addChannel(it, 0) }
+
+    // Guarantee: never hide a channel the server reported — append any channel
+    // the hierarchy walk did not reach (broken/looped parent links) at root level.
+    safeChannels
+        .filter { it.id !in visited }
+        .sortedWith(compareBy({ it.order }, { it.id }))
+        .forEach { items.add(TreeItem.ChannelNode(it, 0)) }
+
+    Log.d(
+        "ChannelTree",
+        "Built ${items.size} items (${items.count { it is TreeItem.ChannelNode }} channels, " +
+            "${items.count { it is TreeItem.UserNode }} users) from ${safeChannels.size} channels, ${safeUsers.size} users"
+    )
     return items
 }
