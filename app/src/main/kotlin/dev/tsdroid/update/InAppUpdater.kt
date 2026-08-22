@@ -67,7 +67,7 @@ object InAppUpdater {
             true
         } catch (e: Exception) {
             Log.e(TAG, "Download/install failed", e)
-            onProgress(DownloadProgress(DownloadState.FAILED, error = e.message ?: "下载失败"))
+            onProgress(DownloadProgress(DownloadState.FAILED, error = e.message ?: "Download failed"))
             false
         }
     }

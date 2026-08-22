@@ -9,13 +9,18 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.yuaxi.ts6droid.cn"
+        applicationId = "com.gamezad.coldts"
         minSdk = 29
         targetSdk = 35
-        versionCode = 6
-        versionName = "2.1.0-Han"
+        versionCode = 7
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            // libtslib_jni.so is only prebuilt for these ABIs
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
     }
 
     signingConfigs {

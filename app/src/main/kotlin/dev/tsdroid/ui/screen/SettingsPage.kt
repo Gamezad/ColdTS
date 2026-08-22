@@ -48,13 +48,15 @@ fun SettingsPage(
     val audioGain by settingsStore.audioGain.collectAsStateWithLifecycle(initialValue = 1.0f)
 
     val languageOptions = listOf(
-        "zh" to stringResource(R.string.language_simplified_chinese),
+        "system" to stringResource(R.string.language_system),
         "en" to stringResource(R.string.language_english),
+        "fa" to stringResource(R.string.language_persian),
+        "zh" to stringResource(R.string.language_simplified_chinese),
         "fr" to stringResource(R.string.language_french),
     )
-    val selectedLanguageTag by settingsStore.language.collectAsStateWithLifecycle(initialValue = "zh")
+    val selectedLanguageTag by settingsStore.language.collectAsStateWithLifecycle(initialValue = "system")
     val selectedLanguageLabel = languageOptions.firstOrNull { it.first == selectedLanguageTag }?.second
-        ?: stringResource(R.string.language_simplified_chinese)
+        ?: stringResource(R.string.language_system)
     var languageMenuExpanded by remember { mutableStateOf(false) }
     var pendingLanguageTag by remember { mutableStateOf<String?>(null) }
     val activity = context as? Activity
@@ -514,7 +516,7 @@ fun SettingsPage(
                         updateInfo = null
                         updateError = null
                         scope.launch {
-                            val result = dev.tsdroid.update.UpdateChecker.checkForUpdate(versionName)
+                            val result = dev.tsdroid.update.UpdateChecker.checkForUpdate(versionName, context)
                             updateInfo = result.update
                             updateError = result.error
                             if (result.update != null) {
@@ -532,7 +534,7 @@ fun SettingsPage(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "TS6 Droid v$versionName",
+                text = "${stringResource(R.string.app_name)} v$versionName",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),

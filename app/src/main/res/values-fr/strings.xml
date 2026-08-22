@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App -->
+    <string name="app_name">ColdTs Client</string>
+    <string name="language_system">Langue du système</string>
+    <string name="language_simplified_chinese">简体中文</string>
+    <string name="language_english">English</string>
+    <string name="language_persian">فارسی</string>
+    <string name="language_french">Français</string>
+    <string name="language_change_title">Langue</string>
+    <string name="language_change_message">L’application doit redémarrer pour appliquer %1$s.</string>
+    <string name="restart">Redémarrer</string>
+    <string name="mute_user">Mute user</string>
+    <string name="unmute_user">Unmute user</string>
+    <string name="user_muted">Muted</string>
+    <string name="channel_connection">Connection</string>
+    <string name="channel_connection_desc">Notification de connexion au serveur</string>
+    <string name="accessibility_service_desc">Contrôleur vocal ColdTs Client</string>
+
+    <!-- ConnectionScreen -->
+    <string name="server_address">Adresse du serveur</string>
+    <string name="server_address_placeholder">localhost:9987</string>
+    <string name="nickname">Pseudo</string>
+    <string name="password_optional">Mot de passe (optionnel)</string>
+    <string name="channel_optional">Channel (optionnel)</string>
+    <string name="default_channel">Channel par défaut</string>
+    <string name="browse_channels">Parcourir les channels</string>
+    <string name="connecting">Connexion\u2026</string>
+    <string name="connect">Se connecter</string>
+    <string name="add_bookmark">Ajouter un favori</string>
+    <string name="edit_bookmark">Modifier le favori</string>
+    <string name="save">Enregistrer</string>
+    <string name="bookmarks">Favoris</string>
+    <string name="no_bookmarks">Aucun favori</string>
+    <string name="manual_connection">Connexion manuelle</string>
+    <string name="auto_reconnect">Reconnexion automatique</string>
+    <string name="remove">Supprimer</string>
+    <string name="edit">Modifier</string>
+    <string name="select_channel">Sélectionner un channel</string>
+    <string name="cancel">Annuler</string>
+
+    <!-- ServerScreen -->
+    <string name="server">Serveur</string>
+    <string name="disconnect">Déconnexion</string>
+    <string name="settings">Paramètres</string>
+    <string name="audio_gain">Gain audio</string>
+    <string name="audio_gain_value">×%1$.1f</string>
+    <string name="show_link_thumbnails">Miniatures des liens vidéo</string>
+    <string name="auto_load_images">Charger les images automatiquement</string>
+    <string name="enable_floating_window">Fenêtre flottante</string>
+    <string name="anime_background">Fond animé aléatoire</string>
+    <string name="noise_suppression">Réduction de bruit du micro</string>
+    <string name="chat">Chat</string>
+    <string name="push_to_talk">Appuyer pour parler</string>
+    <string name="ptt">PTT</string>
+    <string name="mute_mic">Couper le micro</string>
+    <string name="mute">Mute</string>
+    <string name="unmute_mic">Activer le micro</string>
+    <string name="sound_mute">Couper le son</string>
+    <string name="sound_unmute">Activer le son</string>
+    <string name="whisper">Chuchotement</string>
+    <string name="stop_whisper">Arrêter le chuchotement</string>
+    <string name="tab_channel">Channel</string>
+    <string name="tab_private">MP</string>
+    <string name="tab_home">Accueil</string>
+    <string name="tab_settings">Paramètres</string>
+    <string name="no_connection">Aucune connexion</string>
+    <string name="wallpaper_cache_size">Cache fond d\'écran : %1$s Mo (%2$d images)</string>
+    <string name="wallpaper_max_cache">Cache max : %1$d Mo</string>
+    <string name="wallpaper_view_cache">Voir le cache des fonds d\'écran</string>
+    <string name="wallpaper_cache_images">fonds d\'écran</string>
+    <string name="wallpaper_clear_cache">Vider le cache des fonds d\'écran</string>
+    <string name="wallpaper_clear_cache_confirm">Êtes-vous sûr de vouloir vider tout le cache des fonds d\'écran ? Cette action est irréversible.</string>
+    <string name="wallpaper_cache_empty">Aucun fond d\'écran en cache</string>
+    <string name="confirm">Confirmer</string>
+    <string name="update_check">Vérifier les mises à jour</string>
+    <string name="update_found">Nouvelle version disponible</string>
+    <string name="update_already_latest">Déjà à jour</string>
+    <string name="update_available">Nouvelle version %1$s disponible</string>
+    <string name="update_download">Mettre à jour</string>
+    <string name="update_downloading">Téléchargement en cours</string>
+    <string name="update_later">Plus tard</string>
+    <string name="update_no_changelog">Aucun journal de modifications</string>
+    <string name="update_error_http">Serveur : code %1$d</string>
+    <string name="update_error_network">Échec de la requête réseau</string>
+    <string name="close">Fermer</string>
+    <string name="filter_all">Tous</string>
+    <string name="message_channel_placeholder">Message channel\u2026</string>
+    <string name="message_private_placeholder">Message à %1$s\u2026</string>
+    <string name="send">Envoyer</string>
+    <string name="user_fallback">User #%1$d</string>
+
+    <!-- Client info -->
+    <string name="client_info">Infos client</string>
+    <string name="open_private_chat">Ouvrir un MP</string>
+    <string name="whisper_toggle">Chuchoter</string>
+    <string name="unique_id">ID unique</string>
+    <string name="database_id">ID base de données</string>
+    <string name="current_channel">Channel</string>
+    <string name="server_groups">Groupes serveur</string>
+    <string name="channel_group">Groupe du channel</string>
+    <string name="platform_label">Plateforme</string>
+    <string name="version_label">Version</string>
+    <string name="country_label">Pays</string>
+    <string name="talk_power">Puissance de parole</string>
+    <string name="description_label">Description</string>
+    <string name="away_message_label">Message d\'absence</string>
+    <string name="status_label">Statut</string>
+    <string name="priority_speaker">Orateur prioritaire</string>
+    <string name="channel_commander">Commandant de channel</string>
+    <string name="server_query">ServerQuery</string>
+    <string name="channel_info">Infos channel</string>
+    <string name="switch_to_channel">Rejoindre ce channel</string>
+    <string name="topic_label">Sujet</string>
+    <string name="codec_label">Codec</string>
+    <string name="codec_quality_label">Qualité du codec</string>
+    <string name="max_clients_label">Clients max</string>
+    <string name="unlimited">Illimité</string>
+    <string name="needed_talk_power">Puissance requise</string>
+    <string name="channel_default">Défaut</string>
+    <string name="channel_permanent">Permanent</string>
+    <string name="channel_semi_permanent">Semi-permanent</string>
+    <string name="channel_password_protected">Protégé par mot de passe</string>
+    <string name="server_info">Infos serveur</string>
+    <string name="clients_online">Clients en ligne</string>
+    <string name="channels_count">Channels</string>
+    <string name="uptime_label">Disponibilité</string>
+    <string name="welcome_message_label">Message de bienvenue</string>
+    <string name="uptime_days">%1$dj %2$dh %3$dm</string>
+
+    <!-- UserItem -->
+    <string name="status_recording">Enregistrement</string>
+    <string name="status_talking">En train de parler</string>
+    <string name="status_muted">Micro coupé</string>
+    <string name="status_output_muted">Son coupé</string>
+    <string name="status_away">Absent</string>
+
+    <!-- MessageBubble -->
+    <string name="image">Image</string>
+    <string name="file_attachment_info">%1$s \u00B7 Fichier partagé</string>
+    <string name="file_attachment_server">%1$s \u00B7 Fichier du serveur</string>
+    <string name="download_not_supported">Téléchargement non pris en charge</string>
+    <string name="tap_to_download">Appuyer pour télécharger</string>
+    <string name="tap_to_view">Appuyer pour afficher</string>
+    <string name="tap_to_open">Appuyer pour ouvrir</string>
+    <string name="downloading">Téléchargement\u2026</string>
+    <string name="download">Télécharger</string>
+    <string name="file_saved_label">Enregistré dans Téléchargements</string>
+    <string name="file_saved">%1$s enregistré</string>
+    <string name="attach_file">Pièce jointe</string>
+    <string name="file_size_bytes">%1$d o</string>
+    <string name="file_size_kb">%1$.1f Ko</string>
+    <string name="file_size_mb">%1$.1f Mo</string>
+    <string name="file_size_gb">%1$.1f Go</string>
+
+    <!-- File Manager -->
+    <string name="file_manager">Fichiers</string>
+    <string name="no_files">Aucun fichier</string>
+    <string name="new_folder">Nouveau dossier</string>
+    <string name="rename">Renommer</string>
+    <string name="delete_file">Supprimer</string>
+    <string name="confirm_delete">Supprimer %1$s ?</string>
+    <string name="enter_folder_name">Nom du dossier</string>
+    <string name="enter_new_name">Nouveau nom</string>
+    <string name="refresh">Actualiser</string>
+    <string name="create">Créer</string>
+    <string name="folder">Dossier</string>
+    <string name="upload">Envoyer</string>
+    <string name="share_in_channel">Channel actuel</string>
+    <string name="share_file_title">Partager %1$s</string>
+
+    <!-- Notification -->
+    <string name="notif_unmute">Réactiver</string>
+    <string name="notif_mute">Mute</string>
+
+    <!-- ViewModel -->
+    <string name="unknown_sender">Inconnu</string>
+    <string name="me_sender">Moi</string>
+    <string name="error_address_nickname_required">L\'adresse et le pseudo sont requis</string>
+    <string name="connection_failed">Échec de la connexion</string>
+    <string name="browse_failed">Échec du parcours des channels</string>
+
+    <!-- AboutScreen -->
+    <string name="about_software">À propos</string>
+    <string name="about_back">← Retour</string>
+    <string name="about_credits_title">Crédits &amp; Origines</string>
+    <string name="about_credits_desc">ColdTs Client est un client TeamSpeak 3/6 libre et léger pour Android, construit avec Jetpack Compose et basé sur le projet open-source TS6_Droid de flammedev (Grégory D), propulsé par le moteur Rust tslib.</string>
+    <string name="about_enhancement_title">À propos de cette version</string>
+    <string name="about_enhancement_desc">Cette version rebaptise le client ColdTs Client avec une localisation complète anglais/français suivant la langue du téléphone, un thème bleu glacier Material 3, des boîtes de dialogue d\'infos client/channel/serveur et d\'autres fonctions classiques de TeamSpeak.</string>
+    <string name="about_license_title">Licence Open Source (GPLv3)</string>
+    <string name="about_license_desc">Ce projet suit strictement la licence open-source GNU GPLv3. Toute redistribution modifiée DOIT rester entièrement open-source sous GPLv3 et conserver l\'attribution des auteurs originaux. Toute redistribution en source fermée est strictement interdite.</string>
+    <string name="about_repo_title">Dépôt Source &amp; Mises à jour</string>
+    <string name="about_repo_desc">Le code source, les versions officielles et les correctifs sont publiés sur GitHub. N\'hésitez pas à mettre une étoile, suivre, signaler des problèmes ou soumettre des PR :</string>
+    <string name="about_repo_link">🔗 Visiter le dépôt GitHub de ColdTs Client</string>
+    <string name="about_warning_title">⚠️ Avertissement de Fraude</string>
+    <string name="about_warning_desc">Ce programme est un produit purement bénévole, à but non lucratif et open-source. Il est entièrement GRATUIT ! Toute forme de vente commerciale est strictement interdite. Si vous avez payé pour ce logiciel, demandez immédiatement un remboursement.</string>
+    <string name="about_contributors_title">Contributeurs</string>
+    <string name="about_contributions_count">%1$d contributions</string>
+    <string name="contributors_load_error">Échec du chargement</string>
+</resources>

@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App -->
+    <string name="app_name">کلاینت ColdTs</string>
+    <string name="language_system">زبان سیستم</string>
+    <string name="language_simplified_chinese">简体中文</string>
+    <string name="language_english">English</string>
+    <string name="language_persian">فارسی</string>
+    <string name="language_french">Français</string>
+    <string name="language_change_title">زبان</string>
+    <string name="language_change_message">برای اعمال %1$s برنامه باید دوباره راه‌اندازی شود.</string>
+    <string name="restart">راه‌اندازی مجدد</string>
+    <string name="mute_user">قطع صدا کاربر</string>
+    <string name="unmute_user">وصل صدا کاربر</string>
+    <string name="user_muted">بی‌صدا</string>
+    <string name="channel_connection">اتصال</string>
+    <string name="channel_connection_desc">اطلاع‌رسان اتصال به سرور</string>
+    <string name="accessibility_service_desc">کنترل‌کننده صوتی کلاینت ColdTs</string>
+
+    <!-- ConnectionScreen -->
+    <string name="server_address">آدرس سرور</string>
+    <string name="server_address_placeholder">localhost:9987</string>
+    <string name="nickname">نام نمایشی</string>
+    <string name="password_optional">رمز عبور (اختیاری)</string>
+    <string name="channel_optional">کانال (اختیاری)</string>
+    <string name="default_channel">کانال پیش‌فرض</string>
+    <string name="browse_channels">مشاهده کانال‌ها</string>
+    <string name="connecting">در حال اتصال\u2026</string>
+    <string name="connect">اتصال</string>
+    <string name="add_bookmark">افزودن نشانک</string>
+    <string name="edit_bookmark">ویرایش نشانک</string>
+    <string name="save">ذخیره</string>
+    <string name="bookmarks">نشانک‌ها</string>
+    <string name="no_bookmarks">نشانکی وجود ندارد</string>
+    <string name="manual_connection">اتصال دستی</string>
+    <string name="auto_reconnect">اتصال مجدد خودکار</string>
+    <string name="remove">حذف</string>
+    <string name="edit">ویرایش</string>
+    <string name="select_channel">انتخاب کانال</string>
+    <string name="cancel">انصراف</string>
+
+    <!-- ServerScreen -->
+    <string name="server">سرور</string>
+    <string name="disconnect">قطع اتصال</string>
+    <string name="settings">تنظیمات</string>
+    <string name="audio_gain">بهره صدا</string>
+    <string name="audio_gain_value">×%1$.1f</string>
+    <string name="show_link_thumbnails">پیش‌نمایش لینک ویدیو</string>
+    <string name="auto_load_images">بارگذاری خودکار تصاویر</string>
+    <string name="enable_floating_window">پنجره شناور</string>
+    <string name="anime_background">پس‌زمینه متحرک تصادفی</string>
+    <string name="noise_suppression">حذف نویز میکروفون</string>
+    <string name="chat">گفتگو</string>
+    <string name="push_to_talk">فشردن برای صحبت</string>
+    <string name="ptt">PTT</string>
+    <string name="mute_mic">قطع میکروفون</string>
+    <string name="mute">بی‌صدا</string>
+    <string name="unmute_mic">وصل میکروفون</string>
+    <string name="sound_mute">قطع صدا اسپیکر</string>
+    <string name="sound_unmute">وصل صدا اسپیکر</string>
+    <string name="whisper">نجوا</string>
+    <string name="stop_whisper">توقف نجوا</string>
+    <string name="tab_channel">کانال</string>
+    <string name="tab_private">پیام خصوصی</string>
+    <string name="tab_home">خانه</string>
+    <string name="tab_settings">تنظیمات</string>
+    <string name="no_connection">اتصالی وجود ندارد</string>
+    <string name="wallpaper_cache_size">حافظه پس‌زمینه: %1$s مگابایت (%2$d تصویر)</string>
+    <string name="wallpaper_max_cache">حداکثر حافظه: %1$d مگابایت</string>
+    <string name="wallpaper_view_cache">مشاهده پس‌زمینه‌های ذخیره‌شده</string>
+    <string name="wallpaper_cache_images">تصویر</string>
+    <string name="wallpaper_clear_cache">پاک کردن حافظه پس‌زمینه</string>
+    <string name="wallpaper_clear_cache_confirm">مطمئنید که می‌خواهید همه پس‌زمینه‌های ذخیره‌شده را پاک کنید؟ این عمل قابل بازگشت نیست.</string>
+    <string name="wallpaper_cache_empty">پس‌زمینه‌ای ذخیره نشده است</string>
+    <string name="confirm">تأیید</string>
+    <string name="update_check">بررسی به‌روزرسانی</string>
+    <string name="update_found">نسخه جدید موجود است</string>
+    <string name="update_already_latest">شما آخرین نسخه را دارید</string>
+    <string name="update_available">نسخه جدید %1$s موجود است</string>
+    <string name="update_download">به‌روزرسانی</string>
+    <string name="update_downloading">در حال دانلود</string>
+    <string name="update_later">بعداً</string>
+    <string name="update_no_changelog">توضیحاتی برای این نسخه ثبت نشده است</string>
+    <string name="update_error_http">سرور کد %1$d را برگرداند</string>
+    <string name="update_error_network">درخواست شبکه ناموفق بود</string>
+    <string name="close">بستن</string>
+    <string name="filter_all">همه</string>
+    <string name="message_channel_placeholder">پیام کانال\u2026</string>
+    <string name="message_private_placeholder">پیام به %1$s\u2026</string>
+    <string name="send">ارسال</string>
+    <string name="user_fallback">کاربر #%1$d</string>
+
+    <!-- Client info -->
+    <string name="client_info">اطلاعات کاربر</string>
+    <string name="open_private_chat">گفتگوی خصوصی</string>
+    <string name="whisper_toggle">نجوا</string>
+    <string name="unique_id">شناسه یکتا</string>
+    <string name="database_id">شناسه دیتابیس</string>
+    <string name="current_channel">کانال</string>
+    <string name="server_groups">گروه‌های سرور</string>
+    <string name="channel_group">گروه کانال</string>
+    <string name="platform_label">پلتفرم</string>
+    <string name="version_label">نسخه</string>
+    <string name="country_label">کشور</string>
+    <string name="talk_power">قدرت صحبت</string>
+    <string name="description_label">توضیحات</string>
+    <string name="away_message_label">پیام غیبت</string>
+    <string name="status_label">وضعیت</string>
+    <string name="priority_speaker">سخنران اولویت‌دار</string>
+    <string name="channel_commander">فرمانده کانال</string>
+    <string name="server_query">ServerQuery</string>
+    <string name="channel_info">اطلاعات کانال</string>
+    <string name="switch_to_channel">رفتن به این کانال</string>
+    <string name="topic_label">موضوع</string>
+    <string name="codec_label">کدک</string>
+    <string name="codec_quality_label">کیفیت کدک</string>
+    <string name="max_clients_label">حداکثر کاربران</string>
+    <string name="unlimited">نامحدود</string>
+    <string name="needed_talk_power">قدرت صحبت لازم</string>
+    <string name="channel_default">پیش‌فرض</string>
+    <string name="channel_permanent">دائمی</string>
+    <string name="channel_semi_permanent">نیمه‌دائمی</string>
+    <string name="channel_password_protected">محافظت‌شده با رمز</string>
+    <string name="server_info">اطلاعات سرور</string>
+    <string name="clients_online">کاربران آنلاین</string>
+    <string name="channels_count">کانال‌ها</string>
+    <string name="uptime_label">مدت فعالیت</string>
+    <string name="welcome_message_label">پیام خوش‌آمدگویی</string>
+    <string name="uptime_days">%1$d روز %2$d ساعت %3$d دقیقه</string>
+
+    <!-- UserItem -->
+    <string name="status_recording">در حال ضبط</string>
+    <string name="status_talking">در حال صحبت</string>
+    <string name="status_muted">میکروفون قطع است</string>
+    <string name="status_output_muted">اسپیکر قطع است</string>
+    <string name="status_away">غایب</string>
+
+    <!-- MessageBubble -->
+    <string name="image">تصویر</string>
+    <string name="file_attachment_info">%1$s \u00B7 فایل اشتراکی</string>
+    <string name="file_attachment_server">%1$s \u00B7 فایل سرور</string>
+    <string name="download_not_supported">دانلود پشتیبانی نمی‌شود</string>
+    <string name="tap_to_download">برای دانلود لمس کنید</string>
+    <string name="tap_to_view">برای مشاهده لمس کنید</string>
+    <string name="tap_to_open">برای باز کردن لمس کنید</string>
+    <string name="downloading">در حال دانلود\u2026</string>
+    <string name="download">دانلود</string>
+    <string name="file_saved_label">در پوشه Downloads ذخیره شد</string>
+    <string name="file_saved">%1$s ذخیره شد</string>
+    <string name="attach_file">پیوست فایل</string>
+    <string name="file_size_bytes">%1$d بایت</string>
+    <string name="file_size_kb">%1$.1f کیلوبایت</string>
+    <string name="file_size_mb">%1$.1f مگابایت</string>
+    <string name="file_size_gb">%1$.1f گیگابایت</string>
+
+    <!-- File Manager -->
+    <string name="file_manager">فایل‌ها</string>
+    <string name="no_files">فایلی وجود ندارد</string>
+    <string name="new_folder">پوشه جدید</string>
+    <string name="rename">تغییر نام</string>
+    <string name="delete_file">حذف</string>
+    <string name="confirm_delete">%1$s حذف شود؟</string>
+    <string name="enter_folder_name">نام پوشه</string>
+    <string name="enter_new_name">نام جدید</string>
+    <string name="refresh">بازخوانی</string>
+    <string name="create">ایجاد</string>
+    <string name="folder">پوشه</string>
+    <string name="upload">بارگذاری</string>
+    <string name="share_in_channel">کانال فعلی</string>
+    <string name="share_file_title">اشتراک‌گذاری %1$s</string>
+
+    <!-- Notification -->
+    <string name="notif_unmute">وصل صدا</string>
+    <string name="notif_mute">قطع صدا</string>
+
+    <!-- ViewModel -->
+    <string name="unknown_sender">ناشناس</string>
+    <string name="me_sender">من</string>
+    <string name="error_address_nickname_required">آدرس و نام نمایشی الزامی است</string>
+    <string name="connection_failed">اتصال ناموفق بود</string>
+    <string name="browse_failed">دریافت فهرست کانال‌ها ناموفق بود</string>
+
+    <!-- AboutScreen -->
+    <string name="about_software">درباره برنامه</string>
+    <string name="about_back">→ بازگشت</string>
+    <string name="about_credits_title">اعتبارها و منشأ پروژه</string>
+    <string name="about_credits_desc">کلاینت ColdTs یک کلاینت آزاد و سبک TeamSpeak 3/6 برای اندروید است که با Jetpack Compose ساخته شده و موتور آن توسط کتابخانه Rust به نام tslib پردازش می‌شود. این پروژه بر پایه پروژه متن‌باز TS6_Droid اثر flammedev (Grégory D) و نسخه‌های جامعه‌محور آن توسعه یافته است.</string>
+    <string name="about_enhancement_title">درباره این نسخه</string>
+    <string name="about_enhancement_desc">در این نسخه، کلاینت با نام ColdTs Client بازطراحی شده، ترجمه کامل انگلیسی و فارسی مطابق زبان گوشی اضافه شده، تم آبی و یخی Material 3 اعمال شده و امکاناتی مانند مشاهده اطلاعات کاربر، کانال و سرور در کنار دیگر قابلیت‌های اصلی TeamSpeak در دسترس است.</string>
+    <string name="about_license_title">مجوز متن‌باز (GPLv3)</string>
+    <string name="about_license_desc">این پروژه تحت مجوز متن‌باز GNU GPLv3 منتشر می‌شود. هر فرد یا تیمی که این پروژه را تغییر دهد یا بازتوزیع کند، باید آن را کاملاً متن‌باز نگه دارد، مجوز GPLv3 را بپذیرد و نام اصلی سازندگان را حفظ کند. هرگونه توزیع غیرمتن‌باز به‌شدت ممنوع است.</string>
+    <string name="about_repo_title">مخزن سورس و به‌روزرسانی‌ها</string>
+    <string name="about_repo_desc">سورس کامل پروژه، نسخه‌های رسمی و رفع اشکال‌ها در گیت‌هاب منتشر می‌شود. می‌توانید ستاره بدهید، دنبال کنید، ایشو ثبت کنید یا پول‌رکوئست بفرستید:</string>
+    <string name="about_repo_link">🔗 مشاهده مخزن گیت‌هاب کلاینت ColdTs</string>
+    <string name="about_warning_title">⚠️ هشدار کلاهبرداری</string>
+    <string name="about_warning_desc">این برنامه یک محصول کاملاً رایگان، غیرانتفاعی و متن‌باز است! هرگونه فروش یا دریافت هزینه در ازای این برنامه کلاهبرداری است؛ اگر این برنامه را خریده‌اید، فوراً درخواست بازپرداخت ثبت کنید و فروشنده را گزارش دهید.</string>
+    <string name="about_contributors_title">مشارکت‌کنندگان</string>
+    <string name="about_contributions_count">%1$d مشارکت</string>
+    <string name="contributors_load_error">بارگذاری ناموفق بود</string>
+</resources>

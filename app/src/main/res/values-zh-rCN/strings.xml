@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- App -->
-    <string name="app_name">TS6 Droid</string>
+    <string name="app_name">ColdTs Client</string>
     <string name="language_simplified_chinese">简体中文</string>
     <string name="language_english">English</string>
     <string name="language_french">Français</string>
-    <string name="language_change_title">应用语言更改</string>
+    <string name="language_change_title">语言</string>
     <string name="language_change_message">需要重启应用以应用 %1$s。</string>
     <string name="restart">重启</string>
     <string name="mute_user">静音用户</string>
@@ -150,4 +150,50 @@
     <string name="about_contributors_title">贡献者</string>
     <string name="about_contributions_count">%1$d 次贡献</string>
     <string name="contributors_load_error">加载失败</string>
+    <!-- ColdTs additions -->
+    <string name="language_system">跟随系统</string>
+    <string name="language_persian">فارسی</string>
+    <string name="accessibility_service_desc">ColdTs Client 语音控制器</string>
+    <string name="sound_mute">静音扬声器</string>
+    <string name="sound_unmute">取消扬声器静音</string>
+    <string name="whisper">悄悄话</string>
+    <string name="stop_whisper">停止悄悄话</string>
+    <string name="update_error_http">服务器返回 %1$d</string>
+    <string name="update_error_network">网络请求失败</string>
+    <string name="client_info">用户信息</string>
+    <string name="open_private_chat">打开私聊</string>
+    <string name="whisper_toggle">悄悄话</string>
+    <string name="unique_id">唯一 ID</string>
+    <string name="database_id">数据库 ID</string>
+    <string name="current_channel">频道</string>
+    <string name="server_groups">服务器组</string>
+    <string name="channel_group">频道组</string>
+    <string name="platform_label">平台</string>
+    <string name="version_label">版本</string>
+    <string name="country_label">国家</string>
+    <string name="talk_power">发言权</string>
+    <string name="description_label">描述</string>
+    <string name="away_message_label">离开消息</string>
+    <string name="status_label">状态</string>
+    <string name="priority_speaker">优先发言人</string>
+    <string name="channel_commander">频道指挥官</string>
+    <string name="server_query">ServerQuery</string>
+    <string name="channel_info">频道信息</string>
+    <string name="switch_to_channel">切换到此频道</string>
+    <string name="topic_label">主题</string>
+    <string name="codec_label">编解码器</string>
+    <string name="codec_quality_label">编解码质量</string>
+    <string name="max_clients_label">最大用户数</string>
+    <string name="unlimited">无限制</string>
+    <string name="needed_talk_power">所需发言权</string>
+    <string name="channel_default">默认</string>
+    <string name="channel_permanent">永久</string>
+    <string name="channel_semi_permanent">半永久</string>
+    <string name="channel_password_protected">密码保护</string>
+    <string name="server_info">服务器信息</string>
+    <string name="clients_online">在线用户</string>
+    <string name="channels_count">频道数</string>
+    <string name="uptime_label">运行时间</string>
+    <string name="welcome_message_label">欢迎消息</string>
+    <string name="uptime_days">%1$d天 %2$d小时 %3$d分</string>
 </resources>

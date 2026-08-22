@@ -40,6 +40,7 @@ fun ChannelTree(
     channels: List<Channel>,
     users: List<User>,
     onChannelClick: (Long) -> Unit,
+    onChannelLongClick: ((Channel) -> Unit)? = null,
     onUserClick: ((User) -> Unit)? = null,
     onUserLongClick: ((User) -> Unit)? = null,
     mutedUserIds: Set<Int> = emptySet(),
@@ -73,6 +74,7 @@ fun ChannelTree(
                     depth = item.depth,
                     userCount = userCountByChannel[item.channel.id] ?: 0,
                     onClick = { onChannelClick(item.channel.id) },
+                    onLongClick = onChannelLongClick?.let { handler -> { handler(item.channel) } },
                     icon = channelIcons[item.channel.iconId],
                 )
                 is TreeItem.UserNode -> UserItem(
@@ -89,18 +91,23 @@ fun ChannelTree(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ChannelRow(
     channel: Channel,
     depth: Int,
     userCount: Int,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     icon: ImageBitmap? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
             .padding(
                 start = (depth * 24).dp,
                 top = 6.dp,

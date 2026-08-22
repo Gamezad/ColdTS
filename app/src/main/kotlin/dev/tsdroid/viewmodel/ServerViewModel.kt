@@ -96,6 +96,9 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
     private var audioBridge: AudioBridge? = null
     private var connectionService: TsConnectionService? = null
 
+    /** Client ID of the local user on the current server (null while not connected). */
+    val myClientId: Int? get() = tsClient?.clientId
+
     private val _channels = MutableStateFlow<List<Channel>>(emptyList())
     val channels: StateFlow<List<Channel>> = _channels.asStateFlow()
 
