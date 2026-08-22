@@ -167,10 +167,13 @@ fun ClientInfoDialog(
                 InfoRow(stringResource(R.string.platform_label), user.platform ?: "")
                 InfoRow(stringResource(R.string.version_label), user.version ?: "")
                 InfoRow(stringResource(R.string.country_label), user.country ?: "")
-                if (!user.serverGroups.isNullOrEmpty()) {
+                // serverGroups is a Java long[] (LongArray in Kotlin) — no
+                // isNullOrEmpty() for primitive arrays, so check explicitly.
+                val groups = user.serverGroups
+                if (groups != null && groups.isNotEmpty()) {
                     InfoRow(
                         stringResource(R.string.server_groups),
-                        user.serverGroups.joinToString(", "),
+                        groups.joinToString(", "),
                     )
                 }
                 InfoRow(stringResource(R.string.channel_group), user.channelGroup.toString())
