@@ -166,9 +166,6 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
     val enableFloatingWindow: StateFlow<Boolean> = settingsStore.enableFloatingWindow
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
-    val animeBackground: StateFlow<Boolean> = settingsStore.animeBackground
-        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
-
     val noiseSuppression: StateFlow<Boolean> = settingsStore.noiseSuppression
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
@@ -644,10 +641,6 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setEnableFloatingWindow(enabled: Boolean) {
         viewModelScope.launch { settingsStore.setEnableFloatingWindow(enabled) }
-    }
-
-    fun setAnimeBackground(enabled: Boolean) {
-        viewModelScope.launch { settingsStore.setAnimeBackground(enabled) }
     }
 
     fun setNoiseSuppression(enabled: Boolean) {

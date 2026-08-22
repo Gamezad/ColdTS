@@ -48,7 +48,6 @@
     <string name="show_link_thumbnails">پیش‌نمایش لینک ویدیو</string>
     <string name="auto_load_images">بارگذاری خودکار تصاویر</string>
     <string name="enable_floating_window">پنجره شناور</string>
-    <string name="anime_background">پس‌زمینه متحرک تصادفی</string>
     <string name="noise_suppression">حذف نویز میکروفون</string>
     <string name="chat">گفتگو</string>
     <string name="push_to_talk">فشردن برای صحبت</string>
@@ -65,13 +64,6 @@
     <string name="tab_home">خانه</string>
     <string name="tab_settings">تنظیمات</string>
     <string name="no_connection">اتصالی وجود ندارد</string>
-    <string name="wallpaper_cache_size">حافظه پس‌زمینه: %1$s مگابایت (%2$d تصویر)</string>
-    <string name="wallpaper_max_cache">حداکثر حافظه: %1$d مگابایت</string>
-    <string name="wallpaper_view_cache">مشاهده پس‌زمینه‌های ذخیره‌شده</string>
-    <string name="wallpaper_cache_images">تصویر</string>
-    <string name="wallpaper_clear_cache">پاک کردن حافظه پس‌زمینه</string>
-    <string name="wallpaper_clear_cache_confirm">مطمئنید که می‌خواهید همه پس‌زمینه‌های ذخیره‌شده را پاک کنید؟ این عمل قابل بازگشت نیست.</string>
-    <string name="wallpaper_cache_empty">پس‌زمینه‌ای ذخیره نشده است</string>
     <string name="confirm">تأیید</string>
     <string name="update_check">بررسی به‌روزرسانی</string>
     <string name="update_found">نسخه جدید موجود است</string>
@@ -197,4 +189,18 @@
     <string name="about_contributors_title">مشارکت‌کنندگان</string>
     <string name="about_contributions_count">%1$d مشارکت</string>
     <string name="contributors_load_error">بارگذاری ناموفق بود</string>
+    <!-- Wallpaper & groups -->
+    <string name="wallpaper_title">تصویر پس‌زمینه</string>
+    <string name="wallpaper_choose">انتخاب تصویر</string>
+    <string name="wallpaper_change">تغییر</string>
+    <string name="wallpaper_remove">حذف پس‌زمینه</string>
+    <string name="wallpaper_opacity">شفافیت پس‌زمینه</string>
+    <string name="percent_format">%1$d٪</string>
+    <string name="group_server_admin">ادمین سرور</string>
+    <string name="group_server_query_admin">ادمین ServerQuery</string>
+    <string name="group_guest">مهمان</string>
+    <string name="group_channel_admin">ادمین کانال</string>
+    <string name="group_operator">اپراتور</string>
+    <string name="group_voice">ویس</string>
+    <string name="group_fallback">گروه #%1$d</string>
 </resources>

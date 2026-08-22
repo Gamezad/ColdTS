@@ -10,6 +10,8 @@
 
 - 🌐 **English + فارسی (and 简体中文 / Français)** — the UI follows your **phone's language** automatically, with an in-app override
 - 🧊 **Icy blue Material 3 theme** — frost-blue palette for light & dark mode, snowflake launcher icon
+- 🖼 **Custom wallpaper** — pick any image from your phone as the background, with an adjustable transparency slider (no images are downloaded automatically)
+- 👑 **Server & channel groups** — group chips in client info, Server Admin / Channel Admin badges in the user list
 - 🗣 **Voice chat** — voice-activity & push-to-talk, mic/speaker mute, audio gain, noise suppression
 - 🌳 **Full channel tree** — tap to switch channels, long-press for channel info
 - 👤 **Client info** — tap a user for the classic TeamSpeak client details (unique ID, groups, platform, talk power…) with quick actions: private chat, local mute, whisper

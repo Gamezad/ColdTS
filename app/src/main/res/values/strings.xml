@@ -48,7 +48,6 @@
     <string name="show_link_thumbnails">Video link thumbnails</string>
     <string name="auto_load_images">Auto-load images</string>
     <string name="enable_floating_window">Floating window</string>
-    <string name="anime_background">Animated wallpaper background</string>
     <string name="noise_suppression">Microphone noise suppression</string>
     <string name="chat">Chat</string>
     <string name="push_to_talk">Push to talk</string>
@@ -65,13 +64,6 @@
     <string name="tab_home">Home</string>
     <string name="tab_settings">Settings</string>
     <string name="no_connection">No connections</string>
-    <string name="wallpaper_cache_size">Wallpaper cache: %1$s MB (%2$d images)</string>
-    <string name="wallpaper_max_cache">Max cache: %1$d MB</string>
-    <string name="wallpaper_view_cache">View wallpaper cache</string>
-    <string name="wallpaper_cache_images">images</string>
-    <string name="wallpaper_clear_cache">Clear wallpaper cache</string>
-    <string name="wallpaper_clear_cache_confirm">Are you sure you want to clear all cached wallpapers? This cannot be undone.</string>
-    <string name="wallpaper_cache_empty">No cached wallpapers</string>
     <string name="confirm">Confirm</string>
     <string name="update_check">Check for updates</string>
     <string name="update_found">New version available</string>
@@ -197,4 +189,18 @@
     <string name="about_contributors_title">Contributors</string>
     <string name="about_contributions_count">%1$d contributions</string>
     <string name="contributors_load_error">Failed to load</string>
+    <!-- Wallpaper & groups -->
+    <string name="wallpaper_title">Background wallpaper</string>
+    <string name="wallpaper_choose">Choose image</string>
+    <string name="wallpaper_change">Change</string>
+    <string name="wallpaper_remove">Remove wallpaper</string>
+    <string name="wallpaper_opacity">Wallpaper transparency</string>
+    <string name="percent_format">%1$d%%</string>
+    <string name="group_server_admin">Server Admin</string>
+    <string name="group_server_query_admin">ServerQuery Admin</string>
+    <string name="group_guest">Guest</string>
+    <string name="group_channel_admin">Channel Admin</string>
+    <string name="group_operator">Operator</string>
+    <string name="group_voice">Voice</string>
+    <string name="group_fallback">Group #%1$d</string>
 </resources>

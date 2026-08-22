@@ -26,6 +26,8 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -91,6 +93,26 @@ fun UserItem(
             )
 
             // Detail status icons on the right
+            // Server Admin badge (default TS3 server group id 6)
+            if (user.serverGroups?.contains(6L) == true) {
+                Icon(
+                    Icons.Default.Shield,
+                    contentDescription = stringResource(R.string.group_server_admin),
+                    modifier = Modifier.size(14.dp),
+                    tint = Color(0xFF4FC3F7),
+                )
+                Spacer(Modifier.width(2.dp))
+            }
+            // Channel Admin badge (default TS3 channel group id 5)
+            if (user.channelGroup == 5L) {
+                Icon(
+                    Icons.Default.Star,
+                    contentDescription = stringResource(R.string.group_channel_admin),
+                    modifier = Modifier.size(14.dp),
+                    tint = Color(0xFFFFC107),
+                )
+                Spacer(Modifier.width(2.dp))
+            }
             if (user.isRecording) {
                 Icon(
                     Icons.Default.RadioButtonChecked,

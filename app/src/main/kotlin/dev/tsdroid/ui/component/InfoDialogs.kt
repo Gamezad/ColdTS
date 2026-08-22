@@ -3,6 +3,8 @@ package dev.tsdroid.ui.component
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -79,9 +81,36 @@ private fun codecName(codec: Byte): String = when (codec.toInt()) {
 }
 
 /**
+ * Server group display name. The native tslib engine exposes only group IDs,
+ * so the standard TeamSpeak 3 default groups are mapped to their usual names
+ * (1 = ServerQuery Admin, 6 = Server Admin, 8 = Guest); anything else falls
+ * back to the raw ID.
+ */
+@Composable
+private fun serverGroupName(id: Long): String = when (id) {
+    1L -> stringResource(R.string.group_server_query_admin)
+    6L -> stringResource(R.string.group_server_admin)
+    8L -> stringResource(R.string.group_guest)
+    else -> stringResource(R.string.group_fallback, id)
+}
+
+/**
+ * Channel group display name (standard TS3 defaults:
+ * 5 = Channel Admin, 6 = Operator, 7 = Voice, 8 = Guest).
+ */
+@Composable
+private fun channelGroupName(id: Long): String = when (id) {
+    5L -> stringResource(R.string.group_channel_admin)
+    6L -> stringResource(R.string.group_operator)
+    7L -> stringResource(R.string.group_voice)
+    8L -> stringResource(R.string.group_guest)
+    else -> stringResource(R.string.group_fallback, id)
+}
+
+/**
  * Classic TeamSpeak client info dialog.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ClientInfoDialog(
     user: User,
@@ -171,12 +200,29 @@ fun ClientInfoDialog(
                 // isNullOrEmpty() for primitive arrays, so check explicitly.
                 val groups = user.serverGroups
                 if (groups != null && groups.isNotEmpty()) {
-                    InfoRow(
-                        stringResource(R.string.server_groups),
-                        groups.joinToString(", "),
-                    )
+                    SectionTitle(stringResource(R.string.server_groups))
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        groups.forEach { gid ->
+                            FilterChip(
+                                selected = false,
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        serverGroupName(gid),
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                },
+                            )
+                        }
+                    }
                 }
-                InfoRow(stringResource(R.string.channel_group), user.channelGroup.toString())
+                InfoRow(
+                    stringResource(R.string.channel_group),
+                    channelGroupName(user.channelGroup),
+                )
                 InfoRow(stringResource(R.string.description_label), user.description ?: "")
                 InfoRow(stringResource(R.string.away_message_label), user.awayMessage ?: "")
             }

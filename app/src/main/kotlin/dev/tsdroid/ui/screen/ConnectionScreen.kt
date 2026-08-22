@@ -78,7 +78,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.tsdroid.han.R
 import dev.tslib.ConnectionState
-import dev.tsdroid.ui.component.AnimeBackground
+import dev.tsdroid.ui.component.AppWallpaper
 import dev.tsdroid.ui.component.ChannelTree
 import dev.tsdroid.viewmodel.ConnectionViewModel
 import kotlinx.coroutines.launch
@@ -113,7 +113,6 @@ fun ConnectionScreen(
     val isConnecting = connectionState == ConnectionState.CONNECTING
     val context = LocalContext.current
     val settingsStore = remember { dev.tsdroid.data.SettingsStore(context) }
-    val animeBackground by settingsStore.animeBackground.collectAsStateWithLifecycle(initialValue = true)
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -142,7 +141,7 @@ fun ConnectionScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        AnimeBackground(enabled = animeBackground)
+        AppWallpaper()
 
         Scaffold(
             containerColor = Color.Transparent,

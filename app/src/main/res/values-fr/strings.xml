@@ -48,7 +48,6 @@
     <string name="show_link_thumbnails">Miniatures des liens vidéo</string>
     <string name="auto_load_images">Charger les images automatiquement</string>
     <string name="enable_floating_window">Fenêtre flottante</string>
-    <string name="anime_background">Fond animé aléatoire</string>
     <string name="noise_suppression">Réduction de bruit du micro</string>
     <string name="chat">Chat</string>
     <string name="push_to_talk">Appuyer pour parler</string>
@@ -65,13 +64,6 @@
     <string name="tab_home">Accueil</string>
     <string name="tab_settings">Paramètres</string>
     <string name="no_connection">Aucune connexion</string>
-    <string name="wallpaper_cache_size">Cache fond d\'écran : %1$s Mo (%2$d images)</string>
-    <string name="wallpaper_max_cache">Cache max : %1$d Mo</string>
-    <string name="wallpaper_view_cache">Voir le cache des fonds d\'écran</string>
-    <string name="wallpaper_cache_images">fonds d\'écran</string>
-    <string name="wallpaper_clear_cache">Vider le cache des fonds d\'écran</string>
-    <string name="wallpaper_clear_cache_confirm">Êtes-vous sûr de vouloir vider tout le cache des fonds d\'écran ? Cette action est irréversible.</string>
-    <string name="wallpaper_cache_empty">Aucun fond d\'écran en cache</string>
     <string name="confirm">Confirmer</string>
     <string name="update_check">Vérifier les mises à jour</string>
     <string name="update_found">Nouvelle version disponible</string>
@@ -197,4 +189,18 @@
     <string name="about_contributors_title">Contributeurs</string>
     <string name="about_contributions_count">%1$d contributions</string>
     <string name="contributors_load_error">Échec du chargement</string>
+    <!-- Wallpaper & groups -->
+    <string name="wallpaper_title">Fond d\'écran personnalisé</string>
+    <string name="wallpaper_choose">Choisir une image</string>
+    <string name="wallpaper_change">Changer</string>
+    <string name="wallpaper_remove">Supprimer le fond d\'écran</string>
+    <string name="wallpaper_opacity">Transparence du fond d\'écran</string>
+    <string name="percent_format">%1$d%%</string>
+    <string name="group_server_admin">Admin serveur</string>
+    <string name="group_server_query_admin">Admin ServerQuery</string>
+    <string name="group_guest">Invité</string>
+    <string name="group_channel_admin">Admin de channel</string>
+    <string name="group_operator">Opérateur</string>
+    <string name="group_voice">Voix</string>
+    <string name="group_fallback">Groupe #%1$d</string>
 </resources>

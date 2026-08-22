@@ -45,7 +45,6 @@
     <string name="show_link_thumbnails">显示视频链接缩略图</string>
     <string name="auto_load_images">自动加载图片</string>
     <string name="enable_floating_window">启用悬浮窗</string>
-    <string name="anime_background">我是二刺螈</string>
     <string name="noise_suppression">麦克风降噪</string>
     <string name="chat">聊天</string>
     <string name="push_to_talk">按住说话</string>
@@ -58,13 +57,6 @@
     <string name="tab_home">主页</string>
     <string name="tab_settings">设置</string>
     <string name="no_connection">暂无连接</string>
-    <string name="wallpaper_cache_size">壁纸缓存：%1$s MB（%2$d 张）</string>
-    <string name="wallpaper_max_cache">最大缓存：%1$d MB</string>
-    <string name="wallpaper_view_cache">查看壁纸缓存</string>
-    <string name="wallpaper_cache_images">张壁纸</string>
-    <string name="wallpaper_clear_cache">清空壁纸缓存</string>
-    <string name="wallpaper_clear_cache_confirm">确定要清空所有壁纸缓存吗？此操作不可恢复。</string>
-    <string name="wallpaper_cache_empty">暂无缓存壁纸</string>
     <string name="confirm">确定</string>
     <string name="update_check">点击检查更新</string>
     <string name="update_found">发现新版本</string>
@@ -196,4 +188,18 @@
     <string name="uptime_label">运行时间</string>
     <string name="welcome_message_label">欢迎消息</string>
     <string name="uptime_days">%1$d天 %2$d小时 %3$d分</string>
+    <!-- Wallpaper & groups -->
+    <string name="wallpaper_title">自定义壁纸</string>
+    <string name="wallpaper_choose">选择图片</string>
+    <string name="wallpaper_change">更换</string>
+    <string name="wallpaper_remove">移除壁纸</string>
+    <string name="wallpaper_opacity">壁纸透明度</string>
+    <string name="percent_format">%1$d%%</string>
+    <string name="group_server_admin">服务器管理员</string>
+    <string name="group_server_query_admin">ServerQuery 管理员</string>
+    <string name="group_guest">访客</string>
+    <string name="group_channel_admin">频道管理员</string>
+    <string name="group_operator">操作员</string>
+    <string name="group_voice">语音</string>
+    <string name="group_fallback">分组 #%1$d</string>
 </resources>
