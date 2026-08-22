@@ -1,6 +1,3 @@
-// ColdTs version — used for versionName and the output APK file name
-val coldtsVersionName = "1.0.0"
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -16,7 +13,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = 7
-        versionName = coldtsVersionName
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -75,28 +72,6 @@ android {
     }
 }
 
-// ColdTs: name the built APK file "ColdTs-Client-v<version>.apk"
-androidComponents {
-    onVariants { variant ->
-        variant.outputs.forEach { output ->
-            output.outputFileName.set("ColdTs-Client-v$coldtsVersionName.apk")
-        }
-    }
-}
-
-// Compatibility: older CI workflows upload app/build/outputs/apk/debug/app-debug.apk —
-// mirror the renamed APK under the legacy name after packaging so both work.
-afterEvaluate {
-    tasks.matching { it.name == "packageDebug" || it.name == "packageRelease" }.configureEach {
-        doLast {
-            val buildType = name.removePrefix("package").lowercase()
-            val outDir = File(projectDir, "build/outputs/apk/$buildType")
-            val main = outDir.listFiles()?.firstOrNull { it.isFile && it.name.startsWith("ColdTs-Client") } ?: return@doLast
-            val legacy = File(outDir, "app-$buildType.apk")
-            if (!legacy.exists()) main.copyTo(legacy, overwrite = true)
-        }
-    }
-}
 
 // Task to build Rust native libraries via cargo-ndk
 tasks.register<Exec>("buildRustLibs") {
