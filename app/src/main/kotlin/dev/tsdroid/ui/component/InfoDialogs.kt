@@ -121,16 +121,25 @@ fun ClientInfoDialog(
         },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                // Status flags
+                // Status flags (strings resolved outside buildList — @Composable calls
+                // cannot happen inside plain lambdas)
+                val strTalking = stringResource(R.string.status_talking)
+                val strMicMuted = stringResource(R.string.status_muted)
+                val strOutMuted = stringResource(R.string.status_output_muted)
+                val strAway = stringResource(R.string.status_away)
+                val strRecording = stringResource(R.string.status_recording)
+                val strPriority = stringResource(R.string.priority_speaker)
+                val strCommander = stringResource(R.string.channel_commander)
+                val strQuery = stringResource(R.string.server_query)
                 val statuses = buildList {
-                    if (user.isTalking) add(stringResource(R.string.status_talking))
-                    if (user.isInputMuted || !user.hasInputHardware) add(stringResource(R.string.status_muted))
-                    if (user.isOutputMuted) add(stringResource(R.string.status_output_muted))
-                    if (user.isAway) add(stringResource(R.string.status_away))
-                    if (user.isRecording) add(stringResource(R.string.status_recording))
-                    if (user.isPrioritySpeaker) add(stringResource(R.string.priority_speaker))
-                    if (user.isChannelCommander) add(stringResource(R.string.channel_commander))
-                    if (user.isQuery()) add(stringResource(R.string.server_query))
+                    if (user.isTalking) add(strTalking)
+                    if (user.isInputMuted || !user.hasInputHardware) add(strMicMuted)
+                    if (user.isOutputMuted) add(strOutMuted)
+                    if (user.isAway) add(strAway)
+                    if (user.isRecording) add(strRecording)
+                    if (user.isPrioritySpeaker) add(strPriority)
+                    if (user.isChannelCommander) add(strCommander)
+                    if (user.isQuery()) add(strQuery)
                 }
                 if (statuses.isNotEmpty()) {
                     Row(
@@ -240,11 +249,15 @@ fun ChannelInfoDialog(
         },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                val strDefault = stringResource(R.string.channel_default)
+                val strPermanent = stringResource(R.string.channel_permanent)
+                val strSemiPermanent = stringResource(R.string.channel_semi_permanent)
+                val strPassword = stringResource(R.string.channel_password_protected)
                 val flags = buildList {
-                    if (channel.isDefault) add(stringResource(R.string.channel_default))
-                    if (channel.isPermanent) add(stringResource(R.string.channel_permanent))
-                    if (channel.isSemiPermanent) add(stringResource(R.string.channel_semi_permanent))
-                    if (channel.hasPassword) add(stringResource(R.string.channel_password_protected))
+                    if (channel.isDefault) add(strDefault)
+                    if (channel.isPermanent) add(strPermanent)
+                    if (channel.isSemiPermanent) add(strSemiPermanent)
+                    if (channel.hasPassword) add(strPassword)
                 }
                 if (flags.isNotEmpty()) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
