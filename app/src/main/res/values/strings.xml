@@ -207,4 +207,5 @@
     <string name="friend">Friend</string>
     <string name="friend_add">Add friend</string>
     <string name="friend_remove">Remove friend</string>
+    <string name="user_volume">User volume</string>
 </resources>

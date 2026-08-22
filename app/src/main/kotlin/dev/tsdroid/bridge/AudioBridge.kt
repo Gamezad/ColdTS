@@ -265,6 +265,15 @@ class AudioBridge(
                     try {
                         val pcmBytes = decoder.decode(opusData)
                         bytesToShorts(pcmBytes, decodeBuffer)
+                        // Per-user volume (0%..150%)
+                        val gain = userGains[userId] ?: 1.0f
+                        if (gain != 1.0f) {
+                            for (i in decodeBuffer.indices) {
+                                decodeBuffer[i] = (decodeBuffer[i] * gain).toInt()
+                                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                                    .toShort()
+                            }
+                        }
                         hasData = true
                         // Mix: sum with clipping
                         for (i in mixBuffer.indices) {
@@ -302,6 +311,15 @@ class AudioBridge(
      */
     fun setMutedUserIds(userIds: Set<Int>) {
         mutedUserIds = userIds
+    }
+
+    /** Per-user playback volume as gain multipliers (1.0f = 100%). */
+    @Volatile
+    private var userGains: Map<Int, Float> = emptyMap()
+
+    /** Set per-user volume gains (e.g. 0.0f..1.5f for 0%..150%). */
+    fun setUserGains(gains: Map<Int, Float>) {
+        userGains = gains
     }
 
     fun playAudio(userId: Int, opusData: ByteArray) {

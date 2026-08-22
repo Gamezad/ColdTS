@@ -207,4 +207,5 @@
     <string name="friend">Ami</string>
     <string name="friend_add">Ajouter un ami</string>
     <string name="friend_remove">Retirer l\'ami</string>
+    <string name="user_volume">Volume de l\'utilisateur</string>
 </resources>

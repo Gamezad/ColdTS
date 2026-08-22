@@ -153,6 +153,24 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
         // Load saved floating window position
         loadSavedPosition()
 
+        // Refresh the notification as soon as the server name is known —
+        // otherwise it would keep showing the "Connecting…" text forever.
+        serviceScope.launch {
+            tsClient.serverInfo.collect { info ->
+                if (info?.name != null) updateNotification()
+            }
+        }
+
+        // Never keep the floating window over other apps once disconnected.
+        serviceScope.launch {
+            tsClient.state.collect { state ->
+                if (state == dev.tslib.ConnectionState.DISCONNECTED) {
+                    hideFloatingWindow()
+                    updateNotification()
+                }
+            }
+        }
+
         // Listen for audio events, talk status, and play per-user mixing
         tsClient.events.onEach { event ->
             when (event.type) {

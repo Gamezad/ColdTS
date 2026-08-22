@@ -206,4 +206,5 @@
     <string name="friend">好友</string>
     <string name="friend_add">添加好友</string>
     <string name="friend_remove">移除好友</string>
+    <string name="user_volume">用户音量</string>
 </resources>

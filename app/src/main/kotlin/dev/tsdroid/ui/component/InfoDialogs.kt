@@ -20,6 +20,13 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
@@ -27,6 +34,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -102,6 +111,22 @@ private fun serverGroupName(id: Long): String = when (id) {
  * 5 = Channel Admin, 6 = Operator, 7 = Voice, 8 = Guest).
  */
 @Composable
+private fun serverGroupIcon(id: Long): ImageVector = when (id) {
+    1L -> Icons.Default.Terminal
+    6L -> Icons.Default.Shield
+    8L -> Icons.Default.Person
+    else -> Icons.Default.Groups
+}
+
+@Composable
+private fun channelGroupIcon(id: Long): ImageVector = when (id) {
+    5L -> Icons.Default.Star
+    6L -> Icons.Default.VerifiedUser
+    7L -> Icons.Default.Mic
+    else -> Icons.Default.Groups
+}
+
+@Composable
 private fun channelGroupName(id: Long): String = when (id) {
     5L -> stringResource(R.string.group_channel_admin)
     6L -> stringResource(R.string.group_operator)
@@ -121,6 +146,8 @@ fun ClientInfoDialog(
     avatar: ImageBitmap? = null,
     isLocallyMuted: Boolean = false,
     isFriend: Boolean = false,
+    volumePercent: Int = 100,
+    onVolumeChange: ((Int) -> Unit)? = null,
     onOpenChat: () -> Unit,
     onToggleMute: () -> Unit,
     onToggleWhisper: () -> Unit,
@@ -213,6 +240,13 @@ fun ClientInfoDialog(
                             FilterChip(
                                 selected = false,
                                 onClick = {},
+                                leadingIcon = {
+                                    Icon(
+                                        serverGroupIcon(gid),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                    )
+                                },
                                 label = {
                                     Text(
                                         serverGroupName(gid),
@@ -223,12 +257,43 @@ fun ClientInfoDialog(
                         }
                     }
                 }
-                InfoRow(
-                    stringResource(R.string.channel_group),
-                    channelGroupName(user.channelGroup),
-                )
+                SectionTitle(stringResource(R.string.channel_group))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilterChip(
+                        selected = false,
+                        onClick = {},
+                        leadingIcon = {
+                            Icon(
+                                channelGroupIcon(user.channelGroup),
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        label = {
+                            Text(
+                                "${channelGroupName(user.channelGroup)} (#${user.channelGroup})",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        },
+                    )
+                }
                 InfoRow(stringResource(R.string.description_label), user.description ?: "")
                 InfoRow(stringResource(R.string.away_message_label), user.awayMessage ?: "")
+
+                if (onVolumeChange != null) {
+                    SectionTitle(stringResource(R.string.user_volume))
+                    Text(
+                        text = stringResource(R.string.percent_format, volumePercent),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Slider(
+                        value = volumePercent.toFloat(),
+                        onValueChange = { onVolumeChange(it.toInt()) },
+                        valueRange = 0f..150f,
+                    )
+                }
             }
         },
         confirmButton = {

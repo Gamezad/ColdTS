@@ -130,6 +130,7 @@ fun ServerScreen(
     val noiseSuppression by viewModel.noiseSuppression.collectAsStateWithLifecycle()
     val mutedUserIds by viewModel.mutedUserIds.collectAsStateWithLifecycle()
     val friendUids by viewModel.friends.collectAsStateWithLifecycle()
+    val userVolumes by viewModel.userVolumes.collectAsStateWithLifecycle()
     val fileManagerOpen by viewModel.fileManagerOpen.collectAsStateWithLifecycle()
     val fileList by viewModel.fileList.collectAsStateWithLifecycle()
     val previewImageBytes by viewModel.previewImageBytes.collectAsStateWithLifecycle()
@@ -510,6 +511,8 @@ fun ServerScreen(
             isLocallyMuted = user.id in mutedUserIds,
             isFriend = user.uid != null && user.uid in friendUids,
             onToggleFriend = { viewModel.toggleFriend(user.uid) },
+            volumePercent = user.uid?.let { userVolumes[it] ?: 100 } ?: 100,
+            onVolumeChange = { pct -> viewModel.setUserVolume(user.uid, pct) },
             onOpenChat = {
                 clientInfoTarget = null
                 pmTargetId = user.id

@@ -207,4 +207,5 @@
     <string name="friend">دوست</string>
     <string name="friend_add">افزودن دوست</string>
     <string name="friend_remove">حذف دوست</string>
+    <string name="user_volume">حجم صدای کاربر</string>
 </resources>

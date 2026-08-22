@@ -70,6 +70,26 @@ android {
             java.srcDirs("src/main/java", "src/main/kotlin")
         }
     }
+
+    // ColdTs: name the built APK file ColdTs-Client-v1.0.0.apk
+    applicationVariants.all {
+        outputs.all {
+            (this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl)
+                ?.outputFileName = "ColdTs-Client-v1.0.0.apk"
+        }
+    }
+}
+
+// Keep a legacy-named copy (app-debug.apk) so older CI artifact paths keep working.
+val mirrorLegacyApkName = tasks.register("mirrorLegacyApkName") {
+    doLast {
+        val outDir = File(projectDir, "build/outputs/apk/debug")
+        val main = outDir.listFiles()?.firstOrNull { it.isFile && it.name.startsWith("ColdTs-Client") } ?: return@doLast
+        main.copyTo(File(outDir, "app-debug.apk"), overwrite = true)
+    }
+}
+afterEvaluate {
+    tasks.named("assembleDebug") { finalizedBy(mirrorLegacyApkName) }
 }
 
 

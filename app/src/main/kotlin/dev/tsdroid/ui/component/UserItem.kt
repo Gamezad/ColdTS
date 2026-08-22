@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Icon
@@ -115,15 +117,20 @@ fun UserItem(
                 )
                 Spacer(Modifier.width(2.dp))
             }
-            // Channel Admin badge (default TS3 channel group id 5)
-            if (user.channelGroup == 5L) {
-                Icon(
-                    Icons.Default.Star,
-                    contentDescription = stringResource(R.string.group_channel_admin),
-                    modifier = Modifier.size(14.dp),
-                    tint = Color(0xFFFFC107),
-                )
-                Spacer(Modifier.width(2.dp))
+            // Channel group badge with icon (default TS3 channel groups)
+            when (user.channelGroup) {
+                5L -> { // Channel Admin
+                    Icon(Icons.Default.Star, contentDescription = stringResource(R.string.group_channel_admin), modifier = Modifier.size(14.dp), tint = Color(0xFFFFC107))
+                    Spacer(Modifier.width(2.dp))
+                }
+                6L -> { // Operator
+                    Icon(Icons.Default.VerifiedUser, contentDescription = stringResource(R.string.group_operator), modifier = Modifier.size(14.dp), tint = Color(0xFF4FC3F7))
+                    Spacer(Modifier.width(2.dp))
+                }
+                7L -> { // Voice
+                    Icon(Icons.Default.Mic, contentDescription = stringResource(R.string.group_voice), modifier = Modifier.size(14.dp), tint = Color(0xFF66BB6A))
+                    Spacer(Modifier.width(2.dp))
+                }
             }
             if (user.isRecording) {
                 Icon(

@@ -27,6 +27,7 @@ private val KEY_WALLPAPER_PATH = stringPreferencesKey("wallpaper_path")
 private val KEY_WALLPAPER_OPACITY = floatPreferencesKey("wallpaper_opacity")
 private val KEY_DEFAULT_NICKNAME = stringPreferencesKey("default_nickname")
 private val KEY_FRIENDS = stringSetPreferencesKey("friend_uids")
+private val KEY_USER_VOLUMES = stringPreferencesKey("user_volumes")
 
 class SettingsStore(private val context: Context) {
 
@@ -63,6 +64,21 @@ class SettingsStore(private val context: Context) {
     /** Unique IDs (uid) of users marked as friends. */
     val friends: Flow<Set<String>> = context.settingsDataStore.data
         .map { it[KEY_FRIENDS] ?: emptySet() }
+
+    /** Per-user playback volume in percent (0..150), keyed by unique id. */
+    val userVolumes: Flow<Map<String, Int>> = context.settingsDataStore.data
+        .map { prefs ->
+            (prefs[KEY_USER_VOLUMES] ?: "")
+                .split(';')
+                .mapNotNull { entry ->
+                    val idx = entry.indexOf(':')
+                    if (idx <= 0) return@mapNotNull null
+                    val uid = entry.substring(0, idx)
+                    val pct = entry.substring(idx + 1).toIntOrNull() ?: return@mapNotNull null
+                    uid to pct.coerceIn(0, 150)
+                }
+                .toMap()
+        }
 
     suspend fun setAudioGain(gain: Float) {
         context.settingsDataStore.edit { it[KEY_AUDIO_GAIN] = gain }
@@ -128,6 +144,24 @@ class SettingsStore(private val context: Context) {
     suspend fun setDefaultNickname(nickname: String) {
         if (nickname.isBlank()) return
         context.settingsDataStore.edit { it[KEY_DEFAULT_NICKNAME] = nickname }
+    }
+
+    /** Persist a per-user volume (percent 0..150) by unique id. */
+    suspend fun setUserVolume(uid: String, percent: Int) {
+        if (uid.isBlank()) return
+        context.settingsDataStore.edit { prefs ->
+            val current = (prefs[KEY_USER_VOLUMES] ?: "")
+                .split(';')
+                .filter { it.isNotBlank() }
+                .associate { entry ->
+                    val idx = entry.indexOf(':')
+                    if (idx <= 0) "" to 0
+                    else entry.substring(0, idx) to (entry.substring(idx + 1).toIntOrNull() ?: 100)
+                }
+                .toMutableMap()
+            current[uid] = percent.coerceIn(0, 150)
+            prefs[KEY_USER_VOLUMES] = current.entries.joinToString(";") { "${it.key}:${it.value}" }
+        }
     }
 
     /** Mark/unmark a user (by unique id) as a friend. */

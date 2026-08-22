@@ -432,14 +432,15 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun showFloatingWindow() {
-        if (_connectionState.value != ConnectionState.CONNECTED) {
-            Log.d(TAG, "showFloatingWindow skipped: not connected (state=${_connectionState.value})")
+        // Check the LIVE service connection — the cached state can be stale
+        // after an unexpected disconnect, and the overlay must never show then.
+        val service = TsConnectionService.instance
+        if (service == null || !service.hasActiveConnection()) {
+            Log.d(TAG, "showFloatingWindow skipped: no active connection")
             return
         }
         Log.d(TAG, "showFloatingWindow: connected, invoking overlay")
-        TsConnectionService.instance?.showFloatingWindow() ?: run {
-            Log.d(TAG, "showFloatingWindow: no instance, cannot show overlay")
-        }
+        service.showFloatingWindow()
     }
 
     fun hideFloatingWindow() {

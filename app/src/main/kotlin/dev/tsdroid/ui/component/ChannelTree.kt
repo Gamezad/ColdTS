@@ -60,6 +60,12 @@ fun ChannelTree(
         safeUsers.groupingBy { it.channelId }.eachCount()
     }
 
+    // TeamSpeak channel names are conventionally laid out left-to-right — keep
+    // the tree LTR even when the app language is RTL (e.g. Persian).
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalLayoutDirection provides
+            androidx.compose.ui.unit.LayoutDirection.Ltr,
+    ) {
     LazyColumn(modifier = modifier) {
         items(treeItems, key = { item ->
             when (item) {
@@ -88,6 +94,7 @@ fun ChannelTree(
                 )
             }
         }
+    }
     }
 }
 
@@ -182,6 +189,13 @@ private fun buildTreeItems(channels: List<Channel>, users: List<User>): List<Tre
     }
 
     roots.forEach { addChannel(it, 0) }
+
+    // Guarantee: never hide a channel the server reported — append any channel
+    // the hierarchy walk did not reach (broken/looped parent links) at root level.
+    safeChannels
+        .filter { it.id !in visited }
+        .sortedWith(compareBy({ it.order }, { it.id }))
+        .forEach { items.add(TreeItem.ChannelNode(it, 0)) }
 
     Log.d(
         "ChannelTree",
