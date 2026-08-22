@@ -18,7 +18,8 @@
 - 🖥 **Server info** — name, version, uptime, clients online, welcome message
 - 💬 **Chat** — channel + private messages, file attachments, image previews, video link thumbnails
 - 📁 **File browser** — upload / download / rename / delete / create folders
-- 🔖 **Bookmarks** — save and manage your servers
+- 🔖 **Bookmarks** — save and manage your servers (ColdGame `ts.coldgame.ir` comes preloaded) with a remembered default nickname
+- 💛 **Friends & Whisper** — mark friends (persisted), whisper lists
 - 🫧 **Whisper lists**, floating window overlay, auto-reconnect, in-app updater
 
 ---

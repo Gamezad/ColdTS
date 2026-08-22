@@ -202,4 +202,8 @@
     <string name="group_operator">操作员</string>
     <string name="group_voice">语音</string>
     <string name="group_fallback">分组 #%1$d</string>
+    <!-- Friends -->
+    <string name="friend">好友</string>
+    <string name="friend_add">添加好友</string>
+    <string name="friend_remove">移除好友</string>
 </resources>

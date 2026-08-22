@@ -203,4 +203,8 @@
     <string name="group_operator">اپراتور</string>
     <string name="group_voice">ویس</string>
     <string name="group_fallback">گروه #%1$d</string>
+    <!-- Friends -->
+    <string name="friend">دوست</string>
+    <string name="friend_add">افزودن دوست</string>
+    <string name="friend_remove">حذف دوست</string>
 </resources>

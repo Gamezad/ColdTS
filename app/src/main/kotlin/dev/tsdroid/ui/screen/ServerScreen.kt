@@ -129,6 +129,7 @@ fun ServerScreen(
     val enableFloatingWindow by viewModel.enableFloatingWindow.collectAsStateWithLifecycle()
     val noiseSuppression by viewModel.noiseSuppression.collectAsStateWithLifecycle()
     val mutedUserIds by viewModel.mutedUserIds.collectAsStateWithLifecycle()
+    val friendUids by viewModel.friends.collectAsStateWithLifecycle()
     val fileManagerOpen by viewModel.fileManagerOpen.collectAsStateWithLifecycle()
     val fileList by viewModel.fileList.collectAsStateWithLifecycle()
     val previewImageBytes by viewModel.previewImageBytes.collectAsStateWithLifecycle()
@@ -393,6 +394,7 @@ fun ServerScreen(
                 onUserClick = { user -> clientInfoTarget = user },
                 onUserLongClick = { user -> viewModel.toggleMuteUser(user.id) },
                 onWhisperClick = { userId -> viewModel.toggleWhisper(userId) },
+                friendUids = friendUids,
                 mutedUserIds = mutedUserIds,
                 channelIcons = channelIcons,
                 userAvatars = userAvatars,
@@ -506,6 +508,8 @@ fun ServerScreen(
             channelName = channels.find { it.id == user.channelId }?.name,
             avatar = user.uid?.let { userAvatars[it] },
             isLocallyMuted = user.id in mutedUserIds,
+            isFriend = user.uid != null && user.uid in friendUids,
+            onToggleFriend = { viewModel.toggleFriend(user.uid) },
             onOpenChat = {
                 clientInfoTarget = null
                 pmTargetId = user.id

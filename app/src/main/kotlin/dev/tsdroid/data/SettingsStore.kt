@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -24,6 +25,8 @@ private val KEY_ENABLE_FLOATING_WINDOW = booleanPreferencesKey("enable_floating_
 private val KEY_NOISE_SUPPRESSION = booleanPreferencesKey("noise_suppression")
 private val KEY_WALLPAPER_PATH = stringPreferencesKey("wallpaper_path")
 private val KEY_WALLPAPER_OPACITY = floatPreferencesKey("wallpaper_opacity")
+private val KEY_DEFAULT_NICKNAME = stringPreferencesKey("default_nickname")
+private val KEY_FRIENDS = stringSetPreferencesKey("friend_uids")
 
 class SettingsStore(private val context: Context) {
 
@@ -49,6 +52,17 @@ class SettingsStore(private val context: Context) {
     /** Visibility of the wallpaper over the themed surface (0f..1f). */
     val wallpaperOpacity: Flow<Float> = context.settingsDataStore.data
         .map { it[KEY_WALLPAPER_OPACITY] ?: 0.35f }
+
+    /**
+     * The default nickname: remembered from the last successful connection so
+     * the user only has to type it once.
+     */
+    val defaultNickname: Flow<String> = context.settingsDataStore.data
+        .map { it[KEY_DEFAULT_NICKNAME] ?: DEFAULT_NICKNAME }
+
+    /** Unique IDs (uid) of users marked as friends. */
+    val friends: Flow<Set<String>> = context.settingsDataStore.data
+        .map { it[KEY_FRIENDS] ?: emptySet() }
 
     suspend fun setAudioGain(gain: Float) {
         context.settingsDataStore.edit { it[KEY_AUDIO_GAIN] = gain }
@@ -108,6 +122,26 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setWallpaperOpacity(value: Float) {
         context.settingsDataStore.edit { it[KEY_WALLPAPER_OPACITY] = value.coerceIn(0f, 1f) }
+    }
+
+    /** Persist the nickname used for the last successful connection. */
+    suspend fun setDefaultNickname(nickname: String) {
+        if (nickname.isBlank()) return
+        context.settingsDataStore.edit { it[KEY_DEFAULT_NICKNAME] = nickname }
+    }
+
+    /** Mark/unmark a user (by unique id) as a friend. */
+    suspend fun toggleFriend(uid: String) {
+        if (uid.isBlank()) return
+        context.settingsDataStore.edit { prefs ->
+            val current = prefs[KEY_FRIENDS] ?: emptySet()
+            prefs[KEY_FRIENDS] = if (uid in current) current - uid else current + uid
+        }
+    }
+
+    companion object {
+        /** Nickname used until the user connects with a custom one. */
+        const val DEFAULT_NICKNAME = "ColdTsUser"
     }
 
     val noiseSuppression: Flow<Boolean> = context.settingsDataStore.data

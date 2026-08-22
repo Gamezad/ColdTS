@@ -26,7 +26,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import dev.tslib.Channel
-import dev.tslib.ChannelTree as JChannelTree
 import dev.tslib.User
 
 sealed class TreeItem {
@@ -46,6 +45,7 @@ fun ChannelTree(
     channelIcons: Map<Long, ImageBitmap> = emptyMap(),
     userAvatars: Map<String, ImageBitmap> = emptyMap(),
     onWhisperClick: ((Int) -> Unit)? = null,
+    friendUids: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
 ) {
     // Filter nulls early — JNI arrays can contain null elements
@@ -84,6 +84,7 @@ fun ChannelTree(
                     onToggleMute = onUserLongClick?.let { { it(item.user) } },
                     isLocallyMuted = item.user.id in mutedUserIds,
                     onWhisperClick = onWhisperClick,
+                    isFriend = item.user.uid != null && item.user.uid in friendUids,
                 )
             }
         }
@@ -153,29 +154,39 @@ private fun buildTreeItems(channels: List<Channel>, users: List<User>): List<Tre
     val safeChannels = channels.filterNotNull()
     @Suppress("USELESS_CAST")
     val safeUsers = users.filterNotNull()
-
     if (safeChannels.isEmpty()) return emptyList()
 
-    val tree = JChannelTree.fromChannels(safeChannels.toTypedArray())
+    val byParent = safeChannels.groupBy { it.parentId }
     val usersByChannel = safeUsers.groupBy { it.channelId }
+    val knownIds = safeChannels.map { it.id }.toHashSet()
 
-    Log.d("ChannelTree", "usersByChannel keys: ${usersByChannel.keys}, channel ids: ${safeChannels.map { it.id }}")
+    // Roots are top-level channels (parentId == 0) PLUS any orphan whose parent
+    // is missing from the server list — previously those were silently dropped,
+    // which is why not all channels were shown. Sorted by server order.
+    val roots = safeChannels
+        .filter { it.parentId == 0L || it.parentId !in knownIds }
+        .sortedWith(compareBy({ it.order }, { it.id }))
 
     val items = mutableListOf<TreeItem>()
+    val visited = HashSet<Long>()
 
     fun addChannel(channel: Channel, depth: Int) {
+        if (!visited.add(channel.id)) return  // cycle guard
         items.add(TreeItem.ChannelNode(channel, depth))
-        // Add users in this channel
         usersByChannel[channel.id]?.forEach { user ->
             items.add(TreeItem.UserNode(user, depth + 1))
         }
-        // Add sub-channels (filter nulls from JNI array)
-        tree.getChildren(channel.id)?.filterNotNull()?.forEach { child ->
-            addChannel(child, depth + 1)
-        }
+        byParent[channel.id]
+            ?.sortedWith(compareBy({ it.order }, { it.id }))
+            ?.forEach { child -> addChannel(child, depth + 1) }
     }
 
-    tree.roots?.filterNotNull()?.forEach { root -> addChannel(root, 0) }
-    tree.close()
+    roots.forEach { addChannel(it, 0) }
+
+    Log.d(
+        "ChannelTree",
+        "Built ${items.size} items (${items.count { it is TreeItem.ChannelNode }} channels, " +
+            "${items.count { it is TreeItem.UserNode }} users) from ${safeChannels.size} channels, ${safeUsers.size} users"
+    )
     return items
 }

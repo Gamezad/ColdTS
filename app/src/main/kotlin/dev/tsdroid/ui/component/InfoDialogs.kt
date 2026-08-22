@@ -19,6 +19,8 @@ import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -117,9 +120,11 @@ fun ClientInfoDialog(
     channelName: String?,
     avatar: ImageBitmap? = null,
     isLocallyMuted: Boolean = false,
+    isFriend: Boolean = false,
     onOpenChat: () -> Unit,
     onToggleMute: () -> Unit,
     onToggleWhisper: () -> Unit,
+    onToggleFriend: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -189,7 +194,6 @@ fun ClientInfoDialog(
                 InfoRow(stringResource(R.string.status_label), statuses.joinToString(" · "))
 
                 SectionTitle(stringResource(R.string.client_info))
-                InfoRow(stringResource(R.string.unique_id), user.uid ?: "")
                 InfoRow(stringResource(R.string.database_id), user.databaseId.toString())
                 InfoRow(stringResource(R.string.current_channel), channelName ?: "")
                 InfoRow(stringResource(R.string.talk_power), user.talkPower.toString())
@@ -260,6 +264,22 @@ fun ClientInfoDialog(
                     )
                     Spacer(Modifier.size(4.dp))
                     Text(stringResource(R.string.whisper_toggle))
+                }
+                if (onToggleFriend != null) {
+                    TextButton(onClick = onToggleFriend) {
+                        Icon(
+                            if (isFriend) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (isFriend) Color(0xFFEC407A) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.size(4.dp))
+                        Text(
+                            stringResource(
+                                if (isFriend) R.string.friend_remove else R.string.friend_add,
+                            )
+                        )
+                    }
                 }
             }
         },

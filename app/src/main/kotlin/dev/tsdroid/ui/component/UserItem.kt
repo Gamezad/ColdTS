@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -61,6 +62,7 @@ fun UserItem(
     onToggleMute: (() -> Unit)? = null,
     onWhisperClick: ((Int) -> Unit)? = null,
     isLocallyMuted: Boolean = false,
+    isFriend: Boolean = false,
 ) {
     Box(modifier = modifier) {
         Row(
@@ -93,6 +95,16 @@ fun UserItem(
             )
 
             // Detail status icons on the right
+            // Friend badge
+            if (isFriend) {
+                Icon(
+                    Icons.Default.Favorite,
+                    contentDescription = stringResource(R.string.friend),
+                    modifier = Modifier.size(14.dp),
+                    tint = Color(0xFFEC407A),
+                )
+                Spacer(Modifier.width(2.dp))
+            }
             // Server Admin badge (default TS3 server group id 6)
             if (user.serverGroups?.contains(6L) == true) {
                 Icon(

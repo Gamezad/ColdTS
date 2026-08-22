@@ -203,4 +203,8 @@
     <string name="group_operator">Opérateur</string>
     <string name="group_voice">Voix</string>
     <string name="group_fallback">Groupe #%1$d</string>
+    <!-- Friends -->
+    <string name="friend">Ami</string>
+    <string name="friend_add">Ajouter un ami</string>
+    <string name="friend_remove">Retirer l\'ami</string>
 </resources>
