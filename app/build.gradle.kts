@@ -4,6 +4,17 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// CI supplies these through environment variables; never commit a signing key.
+val signingStoreFile = providers.environmentVariable("ANDROID_KEYSTORE_FILE").orNull
+val signingStorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+val signingKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+val signingKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+val signingEnvironment = listOf(signingStoreFile, signingStorePassword, signingKeyAlias, signingKeyPassword)
+require(signingEnvironment.all { it.isNullOrBlank() } || signingEnvironment.none { it.isNullOrBlank() }) {
+    "Set all ANDROID_KEYSTORE_FILE, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD variables."
+}
+val hasSigningEnvironment = signingEnvironment.none { it.isNullOrBlank() }
+
 android {
     namespace = "dev.tsdroid.han"
     compileSdk = 35
@@ -12,8 +23,9 @@ android {
         applicationId = "com.gamezad.coldts"
         minSdk = 29
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.0.0"
+        // Tagged CI builds override both values so the APK matches its release.
+        versionCode = providers.gradleProperty("coldtsVersionCode").map { it.toInt() }.orElse(7).get()
+        versionName = providers.gradleProperty("coldtsVersionName").orElse("1.0.0").get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -24,7 +36,15 @@ android {
     }
 
     signingConfigs {
-        if (file("${rootDir}/release.keystore").exists()) {
+        if (hasSigningEnvironment) {
+            create("release") {
+                storeFile = file(signingStoreFile!!)
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingKeyPassword
+            }
+        } else if (file("${rootDir}/release.keystore").exists()) {
+            // Preserve the previous local-build convention for existing users.
             create("release") {
                 storeFile = file("${rootDir}/release.keystore")
                 storePassword = "ts6droid"
@@ -71,11 +91,12 @@ android {
         }
     }
 
-    // ColdTs: name the built APK file ColdTs-Client-v1.0.0.apk
+    // Include the actual app version in both debug and release filenames.
     applicationVariants.all {
+        val apkVersion = versionName
         outputs.all {
             (this as? com.android.build.gradle.internal.api.BaseVariantOutputImpl)
-                ?.outputFileName = "ColdTs-Client-v1.0.0.apk"
+                ?.outputFileName = "ColdTs-Client-v$apkVersion.apk"
         }
     }
 }
