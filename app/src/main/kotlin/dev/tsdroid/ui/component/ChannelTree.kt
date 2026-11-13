@@ -1,10 +1,10 @@
 package dev.tsdroid.ui.component
 
-import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,23 +15,26 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import dev.tslib.Channel
 import dev.tslib.User
-
-sealed class TreeItem {
-    data class ChannelNode(val channel: Channel, val depth: Int) : TreeItem()
-    data class UserNode(val user: User, val depth: Int) : TreeItem()
-}
+import kotlin.math.ceil
 
 @Composable
 fun ChannelTree(
@@ -48,14 +51,8 @@ fun ChannelTree(
     friendUids: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
 ) {
-    // Filter nulls early — JNI arrays can contain null elements
-    @Suppress("USELESS_CAST")
     val safeUsers = remember(users) { users.filterNotNull() }
-    val treeItems = remember(channels, safeUsers) {
-        val items = buildTreeItems(channels, safeUsers)
-        Log.d("ChannelTree", "Built ${items.size} tree items (${items.count { it is TreeItem.ChannelNode }} channels, ${items.count { it is TreeItem.UserNode }} users) from ${channels.size} channels, ${safeUsers.size} users")
-        items
-    }
+    val treeItems = remember(channels, safeUsers) { buildTreeItems(channels, safeUsers) }
     val userCountByChannel = remember(safeUsers) {
         safeUsers.groupingBy { it.channelId }.eachCount()
     }
@@ -70,6 +67,7 @@ fun ChannelTree(
         items(treeItems, key = { item ->
             when (item) {
                 is TreeItem.ChannelNode -> "ch_${item.channel.id}"
+                is TreeItem.SpacerNode -> "spacer_${item.channel.id}"
                 is TreeItem.UserNode -> "usr_${item.user.id}"
             }
         }) { item ->
@@ -82,10 +80,11 @@ fun ChannelTree(
                     onLongClick = onChannelLongClick?.let { handler -> { handler(item.channel) } },
                     icon = channelIcons[item.channel.iconId],
                 )
+                is TreeItem.SpacerNode -> SpacerRow(item.spacer, item.depth)
                 is TreeItem.UserNode -> UserItem(
                     user = item.user,
                     avatar = item.user.uid?.let { userAvatars[it] },
-                    modifier = Modifier.fillMaxWidth().padding(start = (item.depth * 24 + 32).dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = (item.depth.coerceIn(0, 7) * 20 + 32).dp),
                     onClick = onUserClick?.let { { it(item.user) } },
                     onToggleMute = onUserLongClick?.let { { it(item.user) } },
                     isLocallyMuted = item.user.id in mutedUserIds,
@@ -116,7 +115,7 @@ private fun ChannelRow(
                 onLongClick = onLongClick,
             )
             .padding(
-                start = (depth * 24).dp,
+                start = (depth.coerceIn(0, 7) * 20).dp,
                 top = 6.dp,
                 bottom = 6.dp,
                 end = 8.dp,
@@ -153,54 +152,42 @@ private fun ChannelRow(
     }
 }
 
-private fun buildTreeItems(channels: List<Channel>, users: List<User>): List<TreeItem> {
-    if (channels.isEmpty()) return emptyList()
 
-    // Filter out any null elements that may come from JNI
-    @Suppress("USELESS_CAST")
-    val safeChannels = channels.filterNotNull()
-    @Suppress("USELESS_CAST")
-    val safeUsers = users.filterNotNull()
-    if (safeChannels.isEmpty()) return emptyList()
-
-    val byParent = safeChannels.groupBy { it.parentId }
-    val usersByChannel = safeUsers.groupBy { it.channelId }
-    val knownIds = safeChannels.map { it.id }.toHashSet()
-
-    // Roots are top-level channels (parentId == 0) PLUS any orphan whose parent
-    // is missing from the server list — previously those were silently dropped,
-    // which is why not all channels were shown. Sorted by server order.
-    val roots = safeChannels
-        .filter { it.parentId == 0L || it.parentId !in knownIds }
-        .sortedWith(compareBy({ it.order }, { it.id }))
-
-    val items = mutableListOf<TreeItem>()
-    val visited = HashSet<Long>()
-
-    fun addChannel(channel: Channel, depth: Int) {
-        if (!visited.add(channel.id)) return  // cycle guard
-        items.add(TreeItem.ChannelNode(channel, depth))
-        usersByChannel[channel.id]?.forEach { user ->
-            items.add(TreeItem.UserNode(user, depth + 1))
-        }
-        byParent[channel.id]
-            ?.sortedWith(compareBy({ it.order }, { it.id }))
-            ?.forEach { child -> addChannel(child, depth + 1) }
+/** Render TS spacer channels as decoration, without room actions, icons or counts. */
+@Composable
+private fun SpacerRow(spacer: ChannelSpacer, depth: Int) {
+    val text = spacer.text
+    if (text.isBlank()) {
+        Spacer(Modifier.fillMaxWidth().height(12.dp))
+        return
     }
 
-    roots.forEach { addChannel(it, 0) }
-
-    // Guarantee: never hide a channel the server reported — append any channel
-    // the hierarchy walk did not reach (broken/looped parent links) at root level.
-    safeChannels
-        .filter { it.id !in visited }
-        .sortedWith(compareBy({ it.order }, { it.id }))
-        .forEach { items.add(TreeItem.ChannelNode(it, 0)) }
-
-    Log.d(
-        "ChannelTree",
-        "Built ${items.size} items (${items.count { it is TreeItem.ChannelNode }} channels, " +
-            "${items.count { it is TreeItem.UserNode }} users) from ${safeChannels.size} channels, ${safeUsers.size} users"
-    )
-    return items
+    val style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    val modifier = Modifier.fillMaxWidth().padding(start = (depth.coerceIn(0, 7) * 20 + 8).dp, end = 8.dp, top = 5.dp, bottom = 5.dp)
+    when (spacer.alignment) {
+        SpacerAlignment.CENTER -> Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+            HorizontalDivider(Modifier.weight(1f), color = color.copy(alpha = 0.28f))
+            Text(text.trim(), Modifier.padding(horizontal = 8.dp), color = color, style = style,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            HorizontalDivider(Modifier.weight(1f), color = color.copy(alpha = 0.28f))
+        }
+        SpacerAlignment.REPEAT -> BoxWithConstraints(modifier.clipToBounds()) {
+            val measurer = rememberTextMeasurer()
+            val density = LocalDensity.current
+            val patternWidth = measurer.measure(text, style = style, maxLines = 1).size.width.coerceAtLeast(1)
+            val count = ceil(with(density) { maxWidth.toPx() } / patternWidth).toInt().coerceIn(1, 256)
+            Text(text.repeat(count), color = color.copy(alpha = 0.8f), style = style,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+        }
+        else -> Text(
+            text = text.trim(),
+            modifier = modifier,
+            color = color,
+            style = style,
+            textAlign = if (spacer.alignment == SpacerAlignment.RIGHT) TextAlign.Right else TextAlign.Left,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }

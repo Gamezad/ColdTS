@@ -58,6 +58,8 @@ class AudioBridge(
 
     private var captureJob: Job? = null
     private var playbackJob: Job? = null
+    private val playbackLock = Any()
+    @Volatile private var released = false
 
     // Dedicated single-thread scope for audio playback
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -70,6 +72,7 @@ class AudioBridge(
 
     @Volatile
     private var mutedUserIds: Set<Int> = emptySet()
+    @Volatile private var channelVoiceSuppressed = false
 
     private val _isMuted = MutableStateFlow(true) // Start muted (PTT default)
     val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
@@ -83,7 +86,9 @@ class AudioBridge(
     private val _isLocalVoiceActive = MutableStateFlow(false)
     val isLocalVoiceActive: StateFlow<Boolean> = _isLocalVoiceActive.asStateFlow()
 
+    @Synchronized
     fun initialize() {
+        if (released || encoder != null) return
         try {
             // Explicitly release any old audio stream resources if lingering
             audioTrack?.stop()
@@ -99,13 +104,20 @@ class AudioBridge(
         }
     }
 
+    @Synchronized
     @SuppressLint("MissingPermission")
     fun startCapture(scope: CoroutineScope, noiseSuppressionEnabled: Boolean = true) {
-        if (_isCapturing.value) return
+        if (released || _isCapturing.value) return
+        val session = tsClient.sessionId ?: return
+        if (!tsClient.isConnected) return
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
             Log.w(TAG, "Cannot start capture: RECORD_AUDIO permission is missing")
+            return
+        }
+        val codec = encoder ?: run {
+            Log.e(TAG, "Cannot start capture: Opus encoder is not initialized")
             return
         }
 
@@ -140,7 +152,7 @@ class AudioBridge(
         }
         audioRecord = record
         _isCapturing.value = true
-        noiseSuppressor?.release()
+        try { noiseSuppressor?.release() } catch (_: Throwable) {}
         noiseSuppressor = null
         if (noiseSuppressionEnabled && NoiseSuppressor.isAvailable()) {
             try {
@@ -155,25 +167,22 @@ class AudioBridge(
             Log.i(TAG, "NoiseSuppressor skipped: enabled=$noiseSuppressionEnabled, available=${NoiseSuppressor.isAvailable()}")
         }
 
-        captureJob = scope.launch(Dispatchers.IO) {
+        val job = scope.launch(Dispatchers.IO) {
+            val capture = coroutineContext[Job] ?: return@launch
             val buffer = ShortArray(FRAME_SIZE_SAMPLES)
-            val codec = encoder ?: run {
-                Log.e(TAG, "Cannot start capture: Opus encoder is not initialized")
-                _isCapturing.value = false
-                return@launch
-            }
             while (isActive && _isCapturing.value) {
                 val read = try {
-                    audioRecord?.read(buffer, 0, FRAME_SIZE_SAMPLES) ?: break
+                    record.read(buffer, 0, FRAME_SIZE_SAMPLES)
                 } catch (e: Throwable) {
                     Log.e(TAG, "Microphone read failed", e)
                     break
                 }
+                if (!isActive) break
                 if (read < 0) {
                     Log.e(TAG, "Microphone read returned error $read")
                     break
                 }
-                if (read == FRAME_SIZE_SAMPLES && !_isMuted.value) {
+                if (read == FRAME_SIZE_SAMPLES && !_isMuted.value && !channelVoiceSuppressed) {
                     var energy = 0L
                     for (i in 0 until read) {
                         energy += buffer[i].toLong() * buffer[i].toLong()
@@ -184,38 +193,50 @@ class AudioBridge(
                     
                     val pcmBytes = shortsToBytes(buffer)
                     try {
-                        val encoded = codec.encode(pcmBytes)
-                        tsClient.sendAudio(encoded, CODEC_OPUS_VOICE)
+                        val encoded = synchronized(codec) {
+                            if (isActive && !_isMuted.value && !channelVoiceSuppressed) codec.encode(pcmBytes) else null
+                        }
+                        if (encoded != null && isActive && !_isMuted.value && !channelVoiceSuppressed) {
+                            tsClient.sendAudio(encoded, CODEC_OPUS_VOICE, expectedSession = session) {
+                                capture.isActive && !_isMuted.value && !channelVoiceSuppressed && !released
+                            }
+                        }
                     } catch (_: Exception) {}
                 } else {
                     _isLocalVoiceActive.value = false
                 }
             }
-            _isCapturing.value = false
-            _isLocalVoiceActive.value = false
-            val finishedRecord = audioRecord
-            audioRecord = null
-            noiseSuppressor?.release()
-            noiseSuppressor = null
-            try {
-                finishedRecord?.stop()
-            } catch (_: Throwable) {
-            }
-            try {
-                finishedRecord?.release()
-            } catch (_: Throwable) {
+        }
+        captureJob = job
+        // A cancelled scope can prevent the coroutine body from starting at all.
+        job.invokeOnCompletion {
+            synchronized(this@AudioBridge) {
+                // A stopped job must not release or reset a newer recording.
+                if (audioRecord === record) {
+                    _isCapturing.value = false
+                    _isLocalVoiceActive.value = false
+                    captureJob = null
+                    audioRecord = null
+                    try { noiseSuppressor?.release() } catch (_: Throwable) {}
+                    noiseSuppressor = null
+                    try { record.stop() } catch (_: Throwable) {}
+                    try { record.release() } catch (_: Throwable) {}
+                }
             }
         }
     }
 
+    @Synchronized
     fun stopCapture() {
         _isCapturing.value = false
+        _isLocalVoiceActive.value = false
         captureJob?.cancel()
         captureJob = null
-        audioRecord?.stop()
-        audioRecord?.release()
+        val record = audioRecord
         audioRecord = null
-        noiseSuppressor?.release()
+        try { record?.stop() } catch (_: Throwable) {}
+        try { record?.release() } catch (_: Throwable) {}
+        try { noiseSuppressor?.release() } catch (_: Throwable) {}
         noiseSuppressor = null
     }
 
@@ -245,11 +266,7 @@ class AudioBridge(
         audioTrack?.play()
     }
 
-    /**
-     * Playback loop: decodes one opus frame per user, mixes PCM, writes
-     * one combined frame to AudioTrack. All decoder access is on this
-     * single thread so no synchronization is needed on decoders.
-     */
+    /** Decode and mix on one thread; synchronize with resource release. */
     private fun startPlaybackLoop() {
         playbackJob = playbackScope.launch {
             val mixBuffer = ShortArray(FRAME_SIZE_SAMPLES)
@@ -261,29 +278,32 @@ class AudioBridge(
 
                 for ((userId, queue) in userQueues) {
                     val opusData = synchronized(queue) { queue.pollFirst() } ?: continue
-                    val decoder = userDecoders.getOrPut(userId) { OpusCodec(audioConfig) }
-                    try {
-                        val pcmBytes = decoder.decode(opusData)
-                        bytesToShorts(pcmBytes, decodeBuffer)
-                        // Per-user volume (0%..150%)
-                        val gain = userGains[userId] ?: 1.0f
-                        if (gain != 1.0f) {
-                            for (i in decodeBuffer.indices) {
-                                decodeBuffer[i] = (decodeBuffer[i] * gain).toInt()
-                                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-                                    .toShort()
+                    synchronized(playbackLock) {
+                        if (!released && isActive && !_isOutputMuted.value && userId !in mutedUserIds) try {
+                            val decoder = userDecoders.getOrPut(userId) { OpusCodec(audioConfig) }
+                            val pcmBytes = decoder.decode(opusData)
+                            decodeBuffer.fill(0)
+                            bytesToShorts(pcmBytes, decodeBuffer)
+                            // Per-user volume (0%..150%)
+                            val gain = userGains[userId] ?: 1.0f
+                            if (gain != 1.0f) {
+                                for (i in decodeBuffer.indices) {
+                                    decodeBuffer[i] = (decodeBuffer[i] * gain).toInt()
+                                        .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+                                        .toShort()
+                                }
                             }
-                        }
-                        hasData = true
-                        // Mix: sum with clipping
-                        for (i in mixBuffer.indices) {
-                            val sum = mixBuffer[i].toInt() + decodeBuffer[i].toInt()
-                            mixBuffer[i] = sum.coerceIn(
-                                Short.MIN_VALUE.toInt(),
-                                Short.MAX_VALUE.toInt(),
-                            ).toShort()
-                        }
-                    } catch (_: Exception) {}
+                            hasData = true
+                            // Mix: sum with clipping
+                            for (i in mixBuffer.indices) {
+                                val sum = mixBuffer[i].toInt() + decodeBuffer[i].toInt()
+                                mixBuffer[i] = sum.coerceIn(
+                                    Short.MIN_VALUE.toInt(),
+                                    Short.MAX_VALUE.toInt(),
+                                ).toShort()
+                            }
+                        } catch (_: Exception) {}
+                    }
                 }
 
                 if (hasData) {
@@ -296,7 +316,9 @@ class AudioBridge(
                         }
                     }
                     val bytes = shortsToBytes(mixBuffer)
-                    audioTrack?.write(bytes, 0, bytes.size)
+                    synchronized(playbackLock) {
+                        if (!released && isActive && !_isOutputMuted.value) audioTrack?.write(bytes, 0, bytes.size)
+                    }
                 } else {
                     // No audio data — sleep briefly to avoid busy-waiting
                     delay(5)
@@ -311,6 +333,9 @@ class AudioBridge(
      */
     fun setMutedUserIds(userIds: Set<Int>) {
         mutedUserIds = userIds
+        for (userId in userIds) {
+            userQueues[userId]?.let { queue -> synchronized(queue) { queue.clear() } }
+        }
     }
 
     /** Per-user playback volume as gain multipliers (1.0f = 100%). */
@@ -323,27 +348,42 @@ class AudioBridge(
     }
 
     fun playAudio(userId: Int, opusData: ByteArray) {
-        if (userId in mutedUserIds) return
-        if (_isOutputMuted.value) return // Global output mute — discard incoming audio
+        if (released || userId in mutedUserIds || _isOutputMuted.value) return
         val queue = userQueues.getOrPut(userId) { ArrayDeque() }
         synchronized(queue) {
-            if (queue.size < MAX_QUEUE_FRAMES) {
-                queue.addLast(opusData)
-            }
-            // Drop oldest if queue is full (prevents unbounded lag)
+            if (released || _isOutputMuted.value) return
+            // Keep the most recent frames when playback is behind.
+            if (queue.size >= MAX_QUEUE_FRAMES) queue.removeFirst()
+            queue.addLast(opusData)
         }
     }
 
+    /** Reset local PTT state before the service synchronizes a new session. */
+    @Synchronized
+    fun resetMuteForNewConnection() {
+        channelVoiceSuppressed = false
+        _isMuted.value = true
+    }
+
+    /** Text-only whisper must never silently transmit ordinary channel voice. */
+    @Synchronized
+    fun setChannelVoiceSuppressed(suppressed: Boolean) {
+        channelVoiceSuppressed = suppressed
+        if (suppressed) {
+            _isLocalVoiceActive.value = false
+            setMuted(true)
+        }
+    }
+
+    @Synchronized
     fun setMuted(muted: Boolean) {
+        if (!muted && channelVoiceSuppressed) return
+        if (_isMuted.value == muted) return
         _isMuted.value = muted
         tsClient.setInputMuted(muted)
     }
 
-    fun toggleMute() {
-        val newState = !_isMuted.value
-        _isMuted.value = newState
-        tsClient.setInputMuted(newState)
-    }
+    fun toggleMute() = setMuted(!_isMuted.value)
 
     fun setOutputMuted(muted: Boolean) {
         _isOutputMuted.value = muted
@@ -359,24 +399,27 @@ class AudioBridge(
         setOutputMuted(!_isOutputMuted.value)
     }
 
+    @Synchronized
     fun release() {
+        if (released) return
+        released = true
         stopCapture()
         playbackJob?.cancel()
         playbackJob = null
         playbackScope.cancel()
-        audioTrack?.stop()
-        audioTrack?.release()
-        audioTrack = null
-        noiseSuppressor?.release()
-        noiseSuppressor = null
-        encoder?.close()
-        encoder = null
-        // Close per-user decoders
-        for (decoder in userDecoders.values) {
-            try { decoder.close() } catch (_: Exception) {}
+        // Cancellation does not wait for an in-flight decode or AudioTrack.write.
+        synchronized(playbackLock) {
+            try { audioTrack?.stop() } catch (_: Throwable) {}
+            try { audioTrack?.release() } catch (_: Throwable) {}
+            audioTrack = null
+            for (decoder in userDecoders.values) {
+                try { decoder.close() } catch (_: Throwable) {}
+            }
+            userDecoders.clear()
+            userQueues.clear()
         }
-        userDecoders.clear()
-        userQueues.clear()
+        encoder?.let { codec -> synchronized(codec) { try { codec.close() } catch (_: Throwable) {} } }
+        encoder = null
     }
 
     private fun shortsToBytes(shorts: ShortArray): ByteArray {

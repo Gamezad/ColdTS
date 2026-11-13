@@ -15,7 +15,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.tsdroid.bridge.MAX_NICKNAME_COLLISION_ATTEMPTS
-import dev.tsdroid.bridge.hasNicknameCollision
+import dev.tsdroid.bridge.isNicknameCollisionFailure
 import dev.tsdroid.bridge.nicknameWithCollisionSuffix
 import dev.tsdroid.han.R
 import dev.tsdroid.data.BookmarkStore
@@ -42,6 +42,7 @@ import java.io.File
 class ConnectionViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val TAG = "ConnectionViewModel"
+        private const val BROWSE_RECONNECT_DELAY_MS = 1_500L
         /** Survit aux recréations du ViewModel dans le même processus. */
         private var autoReconnectAttempted = false
     }
@@ -117,8 +118,17 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
     private var serviceConnection: ServiceConnection? = null
     private var connectJob: kotlinx.coroutines.Job? = null
     private var cloneBypassIdentity: Identity? = null
+    @Volatile private var lastBrowseFinishedAt = 0L
+
+    private suspend fun waitAfterBrowse() {
+        val finished = lastBrowseFinishedAt
+        if (finished == 0L) return
+        val elapsed = (System.nanoTime() / 1_000_000L) - finished
+        kotlinx.coroutines.delay((BROWSE_RECONNECT_DELAY_MS - elapsed).coerceAtLeast(0L))
+    }
 
     fun connect(onConnected: () -> Unit) {
+        if (connectJob?.isActive == true || isBrowsing.value) return
         val addr = address.value.trim()
         val nick = nickname.value.trim()
         if (addr.isEmpty() || nick.isEmpty()) {
@@ -177,12 +187,17 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
             }
 
             try {
+                // Browsing uses a temporary real connection. Avoid immediately
+                // reconnecting with the same identity after it has disconnected.
+                waitAfterBrowse()
                 val identity = getOrCreateIdentity()
                 val pw = password.value.trim().takeIf { it.isNotEmpty() }
-                var connectionFailure = service.connect(addr, identity, nick, pw)
+                val initialChannel = channel.value.trim().takeIf { it.isNotEmpty() }
+                var connectionFailure = service.connect(addr, identity, nick, pw, initialChannel)
                 if (connectionFailure?.isTooManyClonesFailure() == true) {
                     Log.w(TAG, "Too many clones for saved identity; retrying with a temporary identity")
-                    connectionFailure = service.connect(addr, getCloneBypassIdentity(), nick, pw)
+                    kotlinx.coroutines.delay(1_500)
+                    connectionFailure = service.connect(addr, getCloneBypassIdentity(), nick, pw, initialChannel)
                 }
 
                 if (connectionFailure == null) {
@@ -294,6 +309,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun browseChannels() {
+        if (isBrowsing.value || connectJob?.isActive == true) return
         val addr = address.value.trim()
         val nick = nickname.value.trim()
         if (addr.isEmpty() || nick.isEmpty()) {
@@ -306,6 +322,7 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
 
         viewModelScope.launch {
             try {
+                waitAfterBrowse()
                 val channels = withContext(Dispatchers.IO) {
                     val identity = getOrCreateIdentity()
                     val pw = password.value.trim().takeIf { it.isNotEmpty() }
@@ -324,21 +341,22 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
                             val c = Client(addr, identity, candidateNick, pw, null)
                             client = c
                             c.waitConnected()
-                            // Pump events until channels are available (or timeout)
-                            val deadline = System.currentTimeMillis() + 5000
-                            while (System.currentTimeMillis() < deadline) {
+                            // Initial channel lists can arrive in multiple batches.
+                            // Wait for a quiet period instead of stopping at the first channel.
+                            val started = System.nanoTime() / 1_000_000L
+                            val deadline = started + 5_000L
+                            var stableSince = started
+                            var previousCount = -1
+                            while (System.nanoTime() / 1_000_000L < deadline) {
                                 c.processEvents()
-                                val raw = c.channels
-                                if (raw != null && raw.isNotEmpty()) break
+                                val count = c.channels?.count { it != null } ?: 0
+                                val now = System.nanoTime() / 1_000_000L
+                                if (count != previousCount) { previousCount = count; stableSince = now }
+                                if (count > 0 && now - started >= 1_000L && now - stableSince >= 750L) break
                                 Thread.sleep(20)
                             }
-
-                            if (hasNicknameCollision(c.users, c.clientId, candidateNick)) {
-                                lastFailure = IllegalStateException("Nickname already in use: $candidateNick")
-                                disconnectAndClose(c)
-                                client = null
-                                continue
-                            }
+                            // Local state snapshot, not a new server request.
+                            c.syncState()
 
                             val ch = c.channels?.filterNotNull() ?: emptyList()
                             disconnectAndClose(c)
@@ -347,9 +365,11 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
                         } catch (e: Throwable) {
                             if (e is CancellationException) throw e
                             lastFailure = e
+                            if (!e.isNicknameCollisionFailure() || attempt == MAX_NICKNAME_COLLISION_ATTEMPTS - 1) throw e
                         } finally {
                             client?.let { closeQuietly(it) }
                         }
+                        kotlinx.coroutines.delay(1_500L * (attempt + 1))
                     }
 
                     throw Exception(
@@ -359,9 +379,12 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 browsedChannels.value = channels
                 showChannelPicker.value = true
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: getApplication<Application>().getString(R.string.browse_failed)
             } finally {
+                lastBrowseFinishedAt = System.nanoTime() / 1_000_000L
                 isBrowsing.value = false
             }
         }

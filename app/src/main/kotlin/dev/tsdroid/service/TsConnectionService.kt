@@ -63,6 +63,7 @@ import dev.tslib.Identity
 import dev.tslib.Channel
 import dev.tslib.User
 import dev.tsdroid.ui.component.ChannelTree
+import dev.tsdroid.ui.component.displayChannelName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -87,7 +88,6 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
         private const val ACTION_DISCONNECT = "com.flammedemon.ts6droid.DISCONNECT"
         private const val ACTION_TOGGLE_MUTE = "com.flammedemon.ts6droid.TOGGLE_MUTE"
         private const val SPEAKER_DELAY_MS = 500L
-        private const val AVATAR_REFRESH_INTERVAL_MS = 30000L // 30 seconds
 
         var instance: TsConnectionService? = null
             private set
@@ -163,27 +163,36 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
 
         // Never keep the floating window over other apps once disconnected.
         serviceScope.launch {
+            var wasConnected = false
             tsClient.state.collect { state ->
+                if (state == dev.tslib.ConnectionState.CONNECTED) wasConnected = true
                 if (state == dev.tslib.ConnectionState.DISCONNECTED) {
+                    if (wasConnected) {
+                        // Don't keep the microphone active after a remote disconnect.
+                        audioBridge.stopCapture()
+                        audioBridge.resetMuteForNewConnection()
+                        WhisperManager.reset()
+                        wasConnected = false
+                    }
                     hideFloatingWindow()
                     updateNotification()
                 }
             }
         }
 
-        // Listen for audio events, talk status, and play per-user mixing
+        // Voice packets have their own lossy buffer; they cannot evict chat events.
+        tsClient.audioEvents.onEach { event ->
+            val userId = (event.data["user_id"] as? Number)?.toInt() ?: return@onEach
+            val data = event.data["data"]
+            if (data is ByteArray) {
+                audioBridge.playAudio(userId, data)
+            } else if (data is Array<*>) {
+                audioBridge.playAudio(userId, ByteArray(data.size) { (data[it] as? Number)?.toByte() ?: 0 })
+            }
+        }.launchIn(serviceScope)
+
         tsClient.events.onEach { event ->
             when (event.type) {
-                "audio_received" -> {
-                    val userId = (event.data["user_id"] as? Number)?.toInt() ?: return@onEach
-                    val data = event.data["data"]
-                    if (data is ByteArray) {
-                        audioBridge.playAudio(userId, data)
-                    } else if (data is Array<*>) {
-                        val bytes = ByteArray(data.size) { (data[it] as? Number)?.toByte() ?: 0 }
-                        audioBridge.playAudio(userId, bytes)
-                    }
-                }
                 "talk_status_start" -> {
                     val speakerId = (event.data["user_id"] as? Number)?.toInt()
                     if (speakerId != null) {
@@ -199,15 +208,15 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
                                 overlayActiveSpeakerId = speakerId
                                 overlayActiveSpeakerName = findUserNickname(speakerId)
                                 val speakerUser = tsClient.users.value.find { it.id == speakerId }
-                                val uid = speakerUser?.uid
-                                if (!uid.isNullOrEmpty()) {
+                                if (speakerUser != null && !speakerUser.uid.isNullOrEmpty() && !speakerUser.avatarId.isNullOrEmpty()) {
+                                    val session = tsClient.sessionId
                                     serviceScope.launch(Dispatchers.IO) {
-                                        // Force refresh speaker avatar
-                                        avatarCache.clearMemoryCache(uid)
-                                        avatarCache.loadAvatar(uid, tsClient)
-                                        val avatar = avatarCache.getAvatar(uid)
+                                        val avatar = avatarCache.loadAvatar(speakerUser, tsClient)
                                         withContext(Dispatchers.Main) {
-                                            if (overlayActiveSpeakerId == speakerId) {
+                                            val current = tsClient.users.value.find { it.id == speakerId }
+                                            if (session != null && tsClient.sessionId == session &&
+                                                overlayActiveSpeakerId == speakerId && current?.uid == speakerUser.uid &&
+                                                current?.avatarId == speakerUser.avatarId) {
                                                 overlayActiveSpeakerAvatar = avatar
                                             }
                                         }
@@ -267,19 +276,19 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
                 if (pendingLocalSpeaking == isSpeaking) {
                     delayedLocalSpeaking = isSpeaking
                     
-                    // Force refresh local user avatar when speaking starts
+                    // Load the local user avatar when speaking starts
                     if (isSpeaking) {
                         val myId = tsClient.clientId
                         val localUser = tsClient.users.value.find { it.id == myId }
-                        val localUid = localUser?.uid
-                        if (!localUid.isNullOrEmpty()) {
+                        if (localUser != null && !localUser.uid.isNullOrEmpty() && !localUser.avatarId.isNullOrEmpty()) {
+                            val session = tsClient.sessionId
                             serviceScope.launch(Dispatchers.IO) {
-                                // Force refresh local avatar
-                                avatarCache.clearMemoryCache(localUid)
-                                avatarCache.loadAvatar(localUid, tsClient)
-                                val avatar = avatarCache.getAvatar(localUid)
+                                val avatar = avatarCache.loadAvatar(localUser, tsClient)
                                 withContext(Dispatchers.Main) {
-                                    if (overlayActiveSpeakerId == myId) {
+                                    val current = tsClient.users.value.find { it.id == myId }
+                                    if (session != null && tsClient.sessionId == session &&
+                                        overlayActiveSpeakerId == myId && current?.uid == localUser.uid &&
+                                        current?.avatarId == localUser.avatarId) {
                                         overlayActiveSpeakerAvatar = avatar
                                     }
                                 }
@@ -290,47 +299,7 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
             }
         }.launchIn(serviceScope)
         
-        // Periodic avatar refresh — force re-download ALL user avatars to keep them fresh
-        serviceScope.launch {
-            while (true) {
-                delay(AVATAR_REFRESH_INTERVAL_MS)
-                val myId = tsClient.clientId
-                if (myId == null) continue
-                
-                val currentUsers = tsClient.users.value
-                val currentChannelId = currentUsers.find { it.id == myId }?.channelId
-                val channelUsers = currentUsers.filter { it.channelId == currentChannelId }
-                
-                // Collect all UIDs in the current channel
-                val uids = channelUsers.mapNotNull { it.uid }.filter { it.isNotEmpty() }.toList()
-                if (uids.isEmpty()) continue
-                
-                serviceScope.launch(Dispatchers.IO) {
-                    // Clear memory cache for all channel users to force re-download
-                    avatarCache.clearMemoryCache(*uids.toTypedArray())
-                    
-                    // Re-download all avatars
-                    for (uid in uids) {
-                        avatarCache.loadAvatar(uid, tsClient)
-                    }
-                    
-                    // Update the current speaker avatar if someone is speaking
-                    val currentSpeakerId = overlayActiveSpeakerId
-                    if (currentSpeakerId != null) {
-                        val speakerUser = currentUsers.find { it.id == currentSpeakerId }
-                        val speakerUid = speakerUser?.uid
-                        if (!speakerUid.isNullOrEmpty()) {
-                            val updatedAvatar = avatarCache.getAvatar(speakerUid)
-                            withContext(Dispatchers.Main) {
-                                if (overlayActiveSpeakerId == currentSpeakerId) {
-                                    overlayActiveSpeakerAvatar = updatedAvatar
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -436,19 +405,21 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
             (address == null || tsClient.serverAddress == address)
     }
 
-    suspend fun connect(address: String, identity: Identity, nickname: String, password: String?): Throwable? {
+    suspend fun connect(address: String, identity: Identity, nickname: String, password: String?, channel: String? = null): Throwable? {
         if (isStopping) {
             return IllegalStateException("Connection service is still stopping. Please try again.")
         }
 
         isIntentionalDisconnect = false
         return try {
-            tsClient.connect(address, identity, nickname, password)
-            audioBridge.startCapture(serviceScope)
-            // Sync initial mute state with server
-            if (audioBridge.isMuted.value) {
-                tsClient.setInputMuted(true)
-            }
+            // Each session starts in PTT mode, even when a service instance is reused.
+            audioBridge.resetMuteForNewConnection()
+            tsClient.connect(address, identity, nickname, password, channel)
+            // Newer native builds advertise the initial mute in waitConnected;
+            // older prebuilts may not. Avoid a duplicate when the snapshot confirms it.
+            val me = tsClient.users.value.firstOrNull { it.id == tsClient.clientId }
+            if (me?.isInputMuted != true) tsClient.setInputMuted(true)
+            ensureAudioCapture()
             // Start event loop
             tsClient.startEventLoop()
             // Initialize whisper manager
@@ -460,6 +431,13 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
             Log.e(TAG, "Connection error", e)
             cleanupFailedConnection()
             e
+        }
+    }
+
+    /** Capture belongs to the foreground service, not to a screen's lifetime. */
+    fun ensureAudioCapture(noiseSuppressionEnabled: Boolean = true) {
+        if (!isStopping && tsClient.isConnected) {
+            audioBridge.startCapture(serviceScope, noiseSuppressionEnabled)
         }
     }
 
@@ -681,7 +659,7 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
         val myId = tsClient.clientId ?: return
         val currentChannelId = tsClient.users.value.find { it.id == myId }?.channelId
         overlayChannelName = currentChannelId?.let { channelId ->
-            tsClient.channels.value.find { it.id == channelId }?.name
+            tsClient.channels.value.find { it.id == channelId }?.name?.let(::displayChannelName)
         }
     }
 
@@ -730,15 +708,16 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
     }
 
     override fun onDestroy() {
+        isStopping = true
         instance = null
         serviceViewModelStore.clear()
         hideFloatingWindow()
         audioBridge.stopCapture()
         WhisperManager.reset()
         try {
-            tsClient.disconnect()
+            tsClient.release()
         } catch (e: Throwable) {
-            Log.w(TAG, "Best-effort disconnect during service destroy failed", e)
+            Log.w(TAG, "Best-effort client cleanup during service destroy failed", e)
         }
         audioBridge.release()
         serviceScope.cancel()
@@ -798,7 +777,7 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
                 val displayAvatar = if (isLocalUserSpeaking) {
                     // When local user is speaking, show our own avatar
                     if (!localUid.isNullOrEmpty()) {
-                        val cached = avatarCache.getAvatar(localUid)
+                        val cached = localUser?.let { avatarCache.getAvatar(it, tsClient) }
                         if (cached != null) cached else activeSpeakerAvatar
                     } else {
                         activeSpeakerAvatar
@@ -809,7 +788,7 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
                 } else {
                     // When nobody is speaking, still show local user avatar
                     if (!localUid.isNullOrEmpty()) {
-                        avatarCache.getAvatar(localUid)
+                        localUser?.let { avatarCache.getAvatar(it, tsClient) }
                     } else null
                 }
                 
@@ -927,17 +906,13 @@ class TsConnectionService : LifecycleService(), ViewModelStoreOwner, SavedStateR
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // Use smaller avatar for the expanded list instead of green dot
-                                    var avatarBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
-                                    
-                                    LaunchedEffect(user.uid) {
-                                        if (!user.uid.isNullOrEmpty()) {
-                                            val cached = avatarCache.getAvatar(user.uid)
-                                            if (cached != null) {
-                                                avatarBitmap = cached
-                                            } else if (!avatarCache.hasNoAvatar(user.uid)) {
-                                                avatarCache.loadAvatar(user.uid, tsClient)
-                                                avatarBitmap = avatarCache.getAvatar(user.uid)
-                                            }
+                                    var avatarBitmap by remember(user.uid, user.avatarId) { mutableStateOf<ImageBitmap?>(null) }
+
+                                    LaunchedEffect(user.uid, user.avatarId, tsClient.sessionId) {
+                                        // Users without an advertised avatar need no file-transfer request.
+                                        avatarBitmap = if (user.uid.isNullOrEmpty() || user.avatarId.isNullOrEmpty()) null
+                                        else avatarCache.getAvatar(user, tsClient) ?: withContext(Dispatchers.IO) {
+                                            avatarCache.loadAvatar(user, tsClient)
                                         }
                                     }
                                     

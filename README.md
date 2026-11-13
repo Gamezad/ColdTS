@@ -19,8 +19,10 @@
 - 💬 **Chat** — channel + private messages, file attachments, image previews, video link thumbnails
 - 📁 **File browser** — upload / download / rename / delete / create folders
 - 🔖 **Bookmarks** — save and manage your servers (ColdGame `ts.coldgame.ir` comes preloaded) with a remembered default nickname
-- 💛 **Friends & Whisper** — mark friends (persisted), whisper lists
-- 🫧 **Whisper lists**, floating window overlay, auto-reconnect, in-app updater
+- 💛 **Friends & text whisper** — mark friends (persisted), send private text to whisper lists
+- 🫧 Floating window overlay, auto-reconnect, in-app updater
+
+Voice whisper is not wired up in the bundled native library. While text whisper is active, ordinary channel voice is paused to avoid broadcasting it by mistake; the microphone stays muted when whisper ends.
 
 ---
 
@@ -37,11 +39,13 @@ Prebuilt APKs are produced by **GitHub Actions** on every push:
 
 ## 🛠 Building from source / کامپایل سورس
 
-The native `tslib` `.so` libraries for all ABIs are committed under `app/src/main/jniLibs`, so no Rust toolchain is required:
+Prebuilt `tslib` libraries for `arm64-v8a` and `x86_64` are committed under `app/src/main/jniLibs`, so building with them does not require a Rust toolchain:
 
 ```bash
-./gradlew :app:assembleDebug -x buildRustLibs
+./gradlew :app:testDebugUnitTest :app:assembleDebug -x buildRustLibs
 ```
+
+The checked-in `x86_64` native library is older and does not export the file-management or channel-permission APIs provided by the `arm64-v8a` library. Those features need matching native libraries rebuilt from a compatible `tslib` source before they can work on that ABI.
 
 APK output: `app/build/outputs/apk/debug/app-debug.apk`
 

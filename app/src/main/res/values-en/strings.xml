@@ -58,6 +58,7 @@
     <string name="sound_mute">Mute speakers</string>
     <string name="sound_unmute">Unmute speakers</string>
     <string name="whisper">Whisper</string>
+    <string name="whisper_text_only">Text whisper only; channel voice is paused until whisper ends.</string>
     <string name="stop_whisper">Stop whisper</string>
     <string name="tab_channel">Channel</string>
     <string name="tab_private">PM</string>
@@ -131,6 +132,13 @@
     <string name="image">Image</string>
     <string name="file_attachment_info">%1$s \u00B7 Shared file</string>
     <string name="file_attachment_server">%1$s \u00B7 Server file</string>
+    <string name="file_download_failed">Could not download this file.</string>
+    <string name="file_list_failed">Could not load the file list. Check your connection and permissions.</string>
+    <string name="tap_to_retry">Tap to retry</string>
+    <string name="file_share_failed">Could not share this file. Check your connection and permissions.</string>
+    <string name="file_upload_failed">Could not upload this file. Check your connection and permissions.</string>
+    <string name="file_selection_failed">Could not use the selected file. The connection or destination may have changed.</string>
+    <string name="file_too_large">Please choose a file no larger than 10 MB.</string>
     <string name="download_not_supported">Download not supported</string>
     <string name="tap_to_download">Tap to download</string>
     <string name="tap_to_view">Tap to view</string>
@@ -208,4 +216,6 @@
     <string name="friend_add">Add friend</string>
     <string name="friend_remove">Remove friend</string>
     <string name="user_volume">User volume</string>
+    <string name="chat_send_failed">Could not send your message. Your draft has been kept.</string>
+    <string name="chat_send_partial">Some messages could not be sent. Check your conversations before retrying.</string>
 </resources>

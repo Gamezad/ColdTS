@@ -66,7 +66,7 @@ import java.util.Locale
 
 sealed class ShareTarget {
     data object Channel : ShareTarget()
-    data class PrivateMessage(val userId: Int, val nickname: String) : ShareTarget()
+    data class PrivateMessage(val user: User) : ShareTarget()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,7 +84,8 @@ fun FileManagerDialog(
     onDelete: (String) -> Unit,
     onRename: (String, String) -> Unit,
     onCreateDirectory: (String) -> Unit,
-    onUploadFile: (String, ByteArray) -> Unit,
+    onBeginUpload: () -> Boolean,
+    onFilePicked: (android.net.Uri?) -> Unit,
     onShareFile: (ShareTarget, String, Long) -> Unit,
     onDismiss: () -> Unit,
     onPreviewImage: (String) -> Unit = {},
@@ -105,21 +106,9 @@ fun FileManagerDialog(
 
     val context = LocalContext.current
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        try {
-            val cursor = context.contentResolver.query(uri, null, null, null, null)
-            val nameIndex = cursor?.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME) ?: -1
-            cursor?.moveToFirst()
-            val fileName = if (nameIndex >= 0) cursor?.getString(nameIndex) ?: "file" else "file"
-            cursor?.close()
-            val data = context.contentResolver.openInputStream(uri)?.readBytes()
-                ?: return@rememberLauncherForActivityResult
-            if (data.size > 10_485_760) return@rememberLauncherForActivityResult
-            onUploadFile(fileName, data)
-        } catch (_: Exception) {}
-    }
+        contract = ActivityResultContracts.GetContent(),
+        onResult = onFilePicked,
+    )
 
     // Sort: folders first, then files, alphabetically
     val sortedFiles = remember(files) {
@@ -165,7 +154,14 @@ fun FileManagerDialog(
                             Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
                         }
                         if (canUpload) {
-                            IconButton(onClick = { filePickerLauncher.launch("*/*") }) {
+                            IconButton(onClick = {
+                                if (onBeginUpload()) try {
+                                    filePickerLauncher.launch("*/*")
+                                } catch (_: Exception) {
+                                    onFilePicked(null)
+                                    android.widget.Toast.makeText(context, R.string.file_selection_failed, android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }) {
                                 Icon(Icons.Default.Upload, contentDescription = stringResource(R.string.upload))
                             }
                         }
@@ -325,7 +321,7 @@ private fun ShareTargetDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                onSelect(ShareTarget.PrivateMessage(user.id, user.nickname))
+                                onSelect(ShareTarget.PrivateMessage(user))
                             }
                             .padding(vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,

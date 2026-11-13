@@ -1,8 +1,6 @@
 package dev.tsdroid.bridge
 
-import dev.tslib.User
-
-internal const val MAX_NICKNAME_COLLISION_ATTEMPTS = 20
+internal const val MAX_NICKNAME_COLLISION_ATTEMPTS = 3
 
 internal fun nicknameWithCollisionSuffix(nickname: String, attempt: Int): String {
     if (attempt <= 0) return nickname
@@ -12,19 +10,23 @@ internal fun nicknameWithCollisionSuffix(nickname: String, attempt: Int): String
     }
 }
 
-internal fun hasNicknameCollision(
-    users: Array<User>?,
-    ownClientId: Int?,
-    nickname: String,
-): Boolean {
-    val matchingUsers = users
-        ?.filterNotNull()
-        ?.filter { it.nickname?.equals(nickname, ignoreCase = true) == true }
-        ?: return false
-
-    return if (ownClientId != null) {
-        matchingUsers.any { it.id != ownClientId }
-    } else {
-        matchingUsers.size > 1
+internal fun Throwable.isNicknameCollisionFailure(): Boolean {
+    var current: Throwable? = this
+    while (current != null) {
+        val message = current.message?.lowercase().orEmpty()
+        if (
+            "nickname" in message &&
+            (
+                "already" in message ||
+                "in use" in message ||
+                "taken" in message ||
+                "duplicate" in message ||
+                "exists" in message
+            )
+        ) {
+            return true
+        }
+        current = current.cause
     }
+    return false
 }

@@ -131,4 +131,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.coil.compose)
     debugImplementation(libs.androidx.ui.tooling)
+    testImplementation("junit:junit:4.13.2")
+    // Android's org.json stubs are not executable in local JVM unit tests.
+    testImplementation("org.json:json:20240303")
 }

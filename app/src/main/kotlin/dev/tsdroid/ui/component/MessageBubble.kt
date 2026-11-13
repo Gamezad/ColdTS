@@ -104,7 +104,7 @@ fun MessageBubble(
     message: ChatMessage,
     showLinkThumbnails: Boolean = false,
     autoLoadImages: Boolean = true,
-    onDownload: ((FileAttachment) -> StateFlow<DownloadState>)? = null,
+    onDownload: ((FileAttachment, Boolean) -> StateFlow<DownloadState>)? = null,
     modifier: Modifier = Modifier,
 ) {
     val isMe = message.isMe
@@ -197,23 +197,25 @@ private data class ParsedMessage(
 @Composable
 private fun FileAttachmentCard(
     attachment: FileAttachment,
-    onDownload: ((FileAttachment) -> StateFlow<DownloadState>)? = null,
+    onDownload: ((FileAttachment, Boolean) -> StateFlow<DownloadState>)? = null,
     autoLoadImages: Boolean = true,
 ) {
     val context = LocalContext.current
-    var downloadStateFlow by remember { mutableStateOf<StateFlow<DownloadState>?>(null) }
+    var downloadStateFlow by remember(attachment) { mutableStateOf<StateFlow<DownloadState>?>(null) }
+    var openWhenReady by remember(attachment) { mutableStateOf(false) }
     val downloadState = downloadStateFlow?.collectAsStateWithLifecycle()?.value ?: DownloadState.Idle
 
-    // Auto-load images (served from disk cache if available)
+    // Auto-load images (served from disk cache if available); these requests are paced.
     LaunchedEffect(attachment, autoLoadImages) {
         if (autoLoadImages && attachment.isImage && onDownload != null && downloadStateFlow == null) {
-            downloadStateFlow = onDownload(attachment)
+            downloadStateFlow = onDownload(attachment, true)
         }
     }
 
-    // Auto-open non-image files after download completes
-    LaunchedEffect(downloadState) {
-        if (downloadState is DownloadState.Done && !attachment.isImage && downloadState.fileUri != null) {
+    // Open only after an explicit tap, not when a cached row is recreated while scrolling.
+    LaunchedEffect(downloadState, openWhenReady) {
+        if (downloadState is DownloadState.Done && openWhenReady && downloadState.fileUri != null) {
+            openWhenReady = false
             openFile(context, downloadState.fileUri, attachment.fileName)
         }
     }
@@ -243,8 +245,12 @@ private fun FileAttachmentCard(
             .padding(vertical = 4.dp)
             .then(
                 when {
-                    onDownload != null && downloadState is DownloadState.Idle ->
-                        Modifier.clickable { downloadStateFlow = onDownload(attachment) }
+                    onDownload != null && (downloadState is DownloadState.Idle ||
+                        (downloadState is DownloadState.Error && downloadState.retryable)) ->
+                        Modifier.clickable {
+                            openWhenReady = !attachment.isImage
+                            downloadStateFlow = onDownload(attachment, false)
+                        }
                     downloadState is DownloadState.Done && downloadState.fileUri != null -> {
                         val uri = downloadState.fileUri
                         Modifier.clickable { openFile(context, uri, attachment.fileName) }
@@ -313,6 +319,13 @@ private fun FileAttachmentCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
+                    if (downloadState.retryable && onDownload != null) {
+                        Text(
+                            text = stringResource(R.string.tap_to_retry),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
         }

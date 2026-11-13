@@ -1,9 +1,12 @@
 package dev.tslib;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A hierarchical channel tree, implemented in pure Java.
@@ -27,7 +30,7 @@ public class ChannelTree implements AutoCloseable {
         ChannelTree tree = new ChannelTree();
         if (channels != null) {
             for (Channel ch : channels) {
-                tree.addChannel(ch);
+                if (ch != null && !tree.channels.containsKey(ch.id)) tree.addChannel(ch);
             }
         }
         return tree;
@@ -48,34 +51,43 @@ public class ChannelTree implements AutoCloseable {
      */
     private List<Long> sortByOrder(List<Long> ids) {
         if (ids == null || ids.size() <= 1) return ids;
-
-        // Build afterId → channelId map
-        Map<Long, Long> afterMap = new HashMap<>();
-        for (Long id : ids) {
+        List<Long> input = new ArrayList<>(ids);
+        Collections.sort(input);
+        Map<Long, List<Long>> afterMap = new HashMap<>();
+        Set<Long> siblingIds = new HashSet<>(input);
+        for (Long id : input) {
             Channel ch = channels.get(id);
             if (ch != null) {
-                afterMap.put((long) ch.order, id);
+                // JNI exposes the predecessor as a 32-bit value; widen unsigned.
+                long predecessor = Integer.toUnsignedLong(ch.order);
+                afterMap.computeIfAbsent(predecessor, k -> new ArrayList<>()).add(id);
             }
         }
-
         List<Long> sorted = new ArrayList<>(ids.size());
-        // Start from the channel that comes after 0 (first in the list)
-        Long current = afterMap.get(0L);
-        while (current != null && sorted.size() < ids.size()) {
-            sorted.add(current);
-            current = afterMap.get(current);
+        Set<Long> visited = new HashSet<>();
+        for (Long id : afterMap.getOrDefault(0L, Collections.emptyList())) {
+            appendChain(id, afterMap, visited, sorted);
         }
-
-        // Append any orphans not reached by the chain
-        if (sorted.size() < ids.size()) {
-            for (Long id : ids) {
-                if (!sorted.contains(id)) {
-                    sorted.add(id);
-                }
+        for (Long id : input) {
+            Channel ch = channels.get(id);
+            if (ch != null && !siblingIds.contains(Integer.toUnsignedLong(ch.order))) {
+                appendChain(id, afterMap, visited, sorted);
             }
         }
-
+        for (Long id : input) appendChain(id, afterMap, visited, sorted);
         return sorted;
+    }
+
+    private void appendChain(Long first, Map<Long, List<Long>> afterMap,
+                             Set<Long> visited, List<Long> result) {
+        Long current = first;
+        while (current != null && visited.add(current)) {
+            result.add(current);
+            current = null;
+            for (Long next : afterMap.getOrDefault(result.get(result.size() - 1), Collections.emptyList())) {
+                if (!visited.contains(next)) { current = next; break; }
+            }
+        }
     }
 
     /**
@@ -104,7 +116,8 @@ public class ChannelTree implements AutoCloseable {
     public Channel[] pathTo(long id) {
         List<Channel> path = new ArrayList<>();
         long current = id;
-        while (current != 0 && channels.containsKey(current)) {
+        Set<Long> visited = new HashSet<>();
+        while (current != 0 && channels.containsKey(current) && visited.add(current)) {
             Channel ch = channels.get(current);
             path.add(0, ch);
             current = ch.parentId;
@@ -136,8 +149,9 @@ public class ChannelTree implements AutoCloseable {
      */
     public String printTree() {
         StringBuilder sb = new StringBuilder();
-        for (Long rootId : roots) {
-            printNode(sb, rootId, "", true);
+        List<Long> sortedRoots = sortByOrder(roots);
+        for (int i = 0; i < sortedRoots.size(); i++) {
+            printNode(sb, sortedRoots.get(i), "", i == sortedRoots.size() - 1);
         }
         return sb.toString();
     }
@@ -150,7 +164,7 @@ public class ChannelTree implements AutoCloseable {
         sb.append(last ? "└── " : "├── ");
         sb.append(ch.name).append("\n");
 
-        List<Long> kids = children.get(id);
+        List<Long> kids = sortByOrder(children.get(id));
         if (kids != null) {
             String childPrefix = prefix + (last ? "    " : "│   ");
             for (int i = 0; i < kids.size(); i++) {

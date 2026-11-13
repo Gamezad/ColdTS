@@ -2,6 +2,7 @@ package dev.tsdroid.service
 
 import android.util.Log
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.tsdroid.bridge.TsClient
@@ -50,11 +51,15 @@ object WhisperManager {
         private set
 
     /** 当前密聊目标用户的 ID 列表 */
-    private val _whisperTargets = mutableListOf<Int>()
+    private val _whisperTargets = mutableStateListOf<Int>()
     val whisperTargets: List<Int> get() = _whisperTargets.toList()
+    // Snapshot stable identities so an ID reused after a user leaves cannot
+    // silently redirect a delayed whisper to someone else.
+    private val _whisperTargetUsers = mutableStateListOf<User>()
+    val whisperTargetUsers: List<User> get() = _whisperTargetUsers.toList()
 
     /** 当前密聊目标用户的名称列表（给 UI 渲染） */
-    private val _whisperTargetNames = mutableListOf<String>()
+    private val _whisperTargetNames = mutableStateListOf<String>()
     val whisperTargetNames: List<String> get() = _whisperTargetNames.toList()
 
     /** 是否正在使用文字 DM 降级方案 */
@@ -72,6 +77,7 @@ object WhisperManager {
      * 必须在连接建立后、UI 显示前调用。
      */
     fun init(client: TsClient) {
+        reset()
         tsClient = client
         Log.i(TAG, "WhisperManager initialized")
     }
@@ -81,6 +87,7 @@ object WhisperManager {
      */
     fun reset() {
         _whisperTargets.clear()
+        _whisperTargetUsers.clear()
         _whisperTargetNames.clear()
         isWhisperActive = false
         isTextFallback = false
@@ -130,6 +137,7 @@ object WhisperManager {
 
         // 2) 更新状态
         _whisperTargets.add(targetUserId)
+        _whisperTargetUsers.add(targetUser)
         _whisperTargetNames.add(targetUser.nickname)
         isWhisperActive = true
 
@@ -153,6 +161,7 @@ object WhisperManager {
 
         // 2) 重置状态
         _whisperTargets.clear()
+        _whisperTargetUsers.clear()
         _whisperTargetNames.clear()
         isWhisperActive = false
         isTextFallback = false
@@ -180,16 +189,17 @@ object WhisperManager {
     /**
      * 向当前密聊目标发送一条文字消息（DM 战术降级时使用）。
      */
-    fun sendWhisperMessage(text: String) {
+    suspend fun sendWhisperMessage(text: String) {
         val client = tsClient ?: return
+        val session = client.sessionId ?: return
         if (!isWhisperActive || _whisperTargets.isEmpty()) return
 
         // 确保文字降级模式已激活
         isTextFallback = true
 
         // 向所有密聊目标发送私信
-        for (targetId in _whisperTargets) {
-            client.sendPrivateMessage(targetId, text)
+        for (user in _whisperTargetUsers.toList()) {
+            client.sendPrivateMessage(user.id, text, user.uid, user.databaseId, user.nickname, session)
         }
 
         Log.d(TAG, "Whisper text sent to ${_whisperTargets.size} targets")
@@ -249,6 +259,7 @@ object WhisperManager {
         val idx = _whisperTargets.indexOf(userId)
         if (idx >= 0) {
             _whisperTargets.removeAt(idx)
+            if (idx < _whisperTargetUsers.size) _whisperTargetUsers.removeAt(idx)
             if (idx < _whisperTargetNames.size) {
                 _whisperTargetNames.removeAt(idx)
             }
