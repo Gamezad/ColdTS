@@ -29,7 +29,7 @@ fun ChatView(
     messages: List<ChatMessage>,
     showLinkThumbnails: Boolean = false,
     autoLoadImages: Boolean = true,
-    onDownload: ((FileAttachment) -> StateFlow<DownloadState>)? = null,
+    onDownload: ((FileAttachment, Boolean) -> StateFlow<DownloadState>)? = null,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -68,7 +68,7 @@ fun ChatView(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         reverseLayout = true,
     ) {
-        items(displayMessages, key = { it.timestamp }) { message ->
+        items(displayMessages, key = { it.id }) { message ->
             MessageBubble(
                 message = message,
                 showLinkThumbnails = showLinkThumbnails,

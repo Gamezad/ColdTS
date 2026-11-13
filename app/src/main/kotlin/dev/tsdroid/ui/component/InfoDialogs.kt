@@ -373,7 +373,7 @@ fun ChannelInfoDialog(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         title = {
             Column {
-                Text(channel.name, style = MaterialTheme.typography.titleMedium)
+                Text(displayChannelName(channel.name), style = MaterialTheme.typography.titleMedium)
                 Text(
                     text = stringResource(R.string.channel_info),
                     style = MaterialTheme.typography.labelSmall,

@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clipToBounds
@@ -69,10 +71,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,6 +87,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.tsdroid.han.R
@@ -92,12 +97,14 @@ import dev.tslib.User
 import dev.tsdroid.ui.component.AppWallpaper
 import dev.tsdroid.ui.component.ChannelInfoDialog
 import dev.tsdroid.ui.component.ChannelTree
+import dev.tsdroid.ui.component.displayChannelName
 import dev.tsdroid.ui.component.ChatView
 import dev.tsdroid.ui.component.ClientInfoDialog
 import dev.tsdroid.ui.component.FileManagerDialog
 import dev.tsdroid.ui.component.ServerInfoDialog
 import dev.tsdroid.ui.component.ShareTarget
 import dev.tsdroid.viewmodel.ChatMessage
+import dev.tsdroid.viewmodel.ChatSendStatus
 import dev.tsdroid.viewmodel.DownloadState
 import dev.tsdroid.viewmodel.FileAttachment
 import dev.tsdroid.viewmodel.ServerViewModel
@@ -118,6 +125,8 @@ fun ServerScreen(
     val serverInfo by viewModel.serverInfo.collectAsStateWithLifecycle()
     val channelMessages by viewModel.channelMessages.collectAsStateWithLifecycle()
     val privateMessages by viewModel.privateMessages.collectAsStateWithLifecycle()
+    val messageText by viewModel.messageDraft.collectAsStateWithLifecycle()
+    val chatSendStatus by viewModel.chatSendStatus.collectAsStateWithLifecycle()
     val isPttMode by viewModel.isPttMode.collectAsStateWithLifecycle()
     val isOutputMuted by viewModel.isOutputMuted.collectAsStateWithLifecycle()
     val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
@@ -139,11 +148,10 @@ fun ServerScreen(
     val fileManagerLoading by viewModel.fileManagerLoading.collectAsStateWithLifecycle()
     val channelPermissions by viewModel.currentChannelPermissions.collectAsStateWithLifecycle()
 
-    var chatOpen by remember { mutableStateOf(false) }
-    var chatEverOpened by remember { mutableStateOf(false) }
-    var chatTab by remember { mutableIntStateOf(0) }
-    var messageText by remember { mutableStateOf("") }
-    var pmTargetId by remember { mutableStateOf<Int?>(null) }
+    var chatOpen by rememberSaveable { mutableStateOf(false) }
+    var chatEverOpened by rememberSaveable { mutableStateOf(false) }
+    var chatTab by rememberSaveable { mutableIntStateOf(0) }
+    var pmPeerKey by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Info dialogs (classic TeamSpeak features)
     var clientInfoTarget by remember { mutableStateOf<User?>(null) }
@@ -153,26 +161,29 @@ fun ServerScreen(
     // Whisper state 鈥?read directly from WhisperManager
     val whisperTargetNames = WhisperManager.whisperTargetNames
     val whisperFirstTargetName = whisperTargetNames.firstOrNull()
+    val textOnlyWhisper = WhisperManager.isWhisperActive && WhisperManager.isTextFallback
 
-    // Resolve pmTarget User from users list
-    val pmTarget = pmTargetId?.let { id -> users.find { it.id == id } }
-
-    // Build PM conversation user list (id 鈫?name) from message map + users list
+    // A TeamSpeak client ID is temporary. Conversation keys use the user's
+    // permanent UID so a reconnect cannot route a reply to the wrong person.
+    val pmTarget = pmPeerKey?.let { key -> users.find { viewModel.peerKeyFor(it) == key } }
     val context = LocalContext.current
-    val pmConversationUsers = remember(privateMessages, users) {
-        privateMessages.keys.map { userId ->
-            val name = users.find { it.id == userId }?.nickname
-                ?: privateMessages[userId]?.lastOrNull { !it.isMe }?.sender
-                ?: context.getString(R.string.user_fallback, userId)
-            userId to name
+    val pmConversationUsers = remember(privateMessages, users, pmPeerKey) {
+        (privateMessages.keys + listOfNotNull(pmPeerKey)).distinct().map { key ->
+            val liveUser = users.find { viewModel.peerKeyFor(it) == key }
+            val history = privateMessages[key].orEmpty()
+            val name = liveUser?.nickname
+                ?: history.lastOrNull { !it.peerName.isNullOrBlank() }?.peerName
+                ?: history.lastOrNull { !it.isMe }?.sender
+                ?: context.getString(R.string.unknown_sender)
+            key to name
         }
     }
 
     val totalUnreadPrivate = unreadPrivate.values.sum()
 
     // Sync chat state to ViewModel for unread tracking
-    LaunchedEffect(chatOpen, chatTab, pmTargetId) {
-        viewModel.setChatState(chatOpen, chatTab, pmTargetId)
+    LaunchedEffect(chatOpen, chatTab, pmPeerKey) {
+        viewModel.setChatState(chatOpen, chatTab, pmPeerKey)
     }
 
     DisposableEffect(Unit) {
@@ -298,13 +309,13 @@ fun ServerScreen(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(
-                                    Icons.Default.Mic,
-                                    contentDescription = stringResource(R.string.push_to_talk),
+                                    if (textOnlyWhisper) Icons.Default.MicOff else Icons.Default.Mic,
+                                    contentDescription = stringResource(if (textOnlyWhisper) R.string.whisper_text_only else R.string.push_to_talk),
                                     modifier = Modifier.size(28.dp),
                                     tint = pttTint,
                                 )
                                 Text(
-                                    stringResource(R.string.ptt),
+                                    stringResource(if (textOnlyWhisper) R.string.mute else R.string.ptt),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = pttTint,
                                 )
@@ -429,11 +440,12 @@ fun ServerScreen(
                         onDelete = { viewModel.deleteFileInChannel(it) },
                         onRename = { old, new -> viewModel.renameFileInChannel(old, new) },
                         onCreateDirectory = { viewModel.createDirectoryInChannel(it) },
-                        onUploadFile = { name, data -> viewModel.uploadFileToChannel(name, data) },
+                        onBeginUpload = viewModel::beginManagerUpload,
+                        onFilePicked = viewModel::completeManagerUpload,
                         onShareFile = { target, name, size ->
                             when (target) {
                                 is ShareTarget.Channel -> viewModel.shareFile(null, name, size)
-                                is ShareTarget.PrivateMessage -> viewModel.shareFile(target.userId, name, size)
+                                is ShareTarget.PrivateMessage -> viewModel.shareFile(target.user, name, size)
                             }
                         },
                         onDismiss = { viewModel.closeFileManager() },
@@ -463,38 +475,43 @@ fun ServerScreen(
                         chatTab = chatTab,
                         onTabChange = { chatTab = it },
                         channelMessages = channelMessages,
-                        privateMessages = pmTargetId?.let { id ->
-                            privateMessages[id] ?: emptyList()
+                        privateMessages = pmPeerKey?.let { key ->
+                            privateMessages[key] ?: emptyList()
                         } ?: privateMessages.values.flatten().sortedBy { it.timestamp },
                         messageText = messageText,
-                        onMessageChange = { messageText = it },
+                        onMessageChange = viewModel::updateMessageDraft,
+                        sendStatus = chatSendStatus,
                         pmTarget = pmTarget,
+                        selectedPmPeerKey = pmPeerKey,
                         pmConversationUsers = pmConversationUsers,
-                        onSelectPmUser = { userId -> pmTargetId = userId },
-                        onClearPmTarget = { pmTargetId = null },
+                        onSelectPmUser = { peerKey -> pmPeerKey = peerKey },
+                        onClearPmTarget = { pmPeerKey = null },
                         onSend = {
                             if (WhisperManager.isWhisperActive && whisperFirstTargetName != null) {
-                                viewModel.sendWhisperMessage(messageText)
+                                val firstTarget = WhisperManager.whisperTargets.firstOrNull()
+                                if (viewModel.sendWhisperMessage() && firstTarget != null) {
+                                    users.find { it.id == firstTarget }?.let { pmPeerKey = viewModel.peerKeyFor(it) }
+                                    chatTab = 1
+                                }
                             } else {
                                 when (chatTab) {
-                                    0 -> viewModel.sendChannelMessage(messageText)
-                                    1 -> pmTargetId?.let { viewModel.sendPrivateMessage(it, messageText) }
+                                    0 -> viewModel.sendChannelMessage()
+                                    1 -> pmTarget?.let { viewModel.sendPrivateMessage(it) }
                                 }
                             }
-                            messageText = ""
                         },
                         onClose = { chatOpen = false },
                         unreadChannel = unreadChannel,
                         unreadPrivateTotal = totalUnreadPrivate,
                         unreadPrivatePerUser = unreadPrivate,
                         showLinkThumbnails = showLinkThumbnails,
-                        autoLoadImages = autoLoadImages,
+                        autoLoadImages = autoLoadImages && chatOpen,
                         canUploadFiles = (channelPermissions and dev.tslib.Channel.PERM_FILE_UPLOAD) != 0L,
-                        onUploadFile = { fileName, data ->
-                            viewModel.uploadAndSendFile(fileName, data, chatTab == 1, pmTargetId)
-                        },
-                        onDownload = { attachment -> viewModel.downloadAttachment(attachment) },
+                        onBeginUpload = { viewModel.beginChatUpload(chatTab == 1, pmTarget) },
+                        onFilePicked = viewModel::completeChatUpload,
+                        onDownload = { attachment, automatic -> viewModel.downloadAttachment(attachment, automatic) },
                         isWhisperActive = WhisperManager.isWhisperActive,
+                        isTextWhisper = WhisperManager.isTextFallback,
                         whisperTargetName = whisperFirstTargetName,
                     )
                 }
@@ -506,7 +523,7 @@ fun ServerScreen(
     clientInfoTarget?.let { user ->
         ClientInfoDialog(
             user = user,
-            channelName = channels.find { it.id == user.channelId }?.name,
+            channelName = channels.find { it.id == user.channelId }?.name?.let(::displayChannelName),
             avatar = user.uid?.let { userAvatars[it] },
             isLocallyMuted = user.id in mutedUserIds,
             isFriend = user.uid != null && user.uid in friendUids,
@@ -515,7 +532,7 @@ fun ServerScreen(
             onVolumeChange = { pct -> viewModel.setUserVolume(user.uid, pct) },
             onOpenChat = {
                 clientInfoTarget = null
-                pmTargetId = user.id
+                pmPeerKey = viewModel.peerKeyFor(user)
                 chatTab = 1
                 chatOpen = true
             },
@@ -595,39 +612,32 @@ fun ChatPanel(
     privateMessages: List<ChatMessage>,
     messageText: String,
     onMessageChange: (String) -> Unit,
+    sendStatus: ChatSendStatus,
     pmTarget: User?,
-    pmConversationUsers: List<Pair<Int, String>>,
-    onSelectPmUser: (Int) -> Unit,
+    selectedPmPeerKey: String?,
+    pmConversationUsers: List<Pair<String, String>>,
+    onSelectPmUser: (String) -> Unit,
     onClearPmTarget: () -> Unit,
     onSend: () -> Unit,
     onClose: () -> Unit,
     unreadChannel: Int,
     unreadPrivateTotal: Int,
-    unreadPrivatePerUser: Map<Int, Int>,
+    unreadPrivatePerUser: Map<String, Int>,
     showLinkThumbnails: Boolean,
     autoLoadImages: Boolean = true,
     canUploadFiles: Boolean = true,
-    onUploadFile: (String, ByteArray) -> Unit = { _, _ -> },
-    onDownload: ((FileAttachment) -> StateFlow<DownloadState>)? = null,
+    onBeginUpload: () -> Boolean = { false },
+    onFilePicked: (android.net.Uri?) -> Unit = {},
+    onDownload: ((FileAttachment, Boolean) -> StateFlow<DownloadState>)? = null,
     isWhisperActive: Boolean = false,
+    isTextWhisper: Boolean = false,
     whisperTargetName: String? = null,
 ) {
     val context = LocalContext.current
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        try {
-            val cursor = context.contentResolver.query(uri, null, null, null, null)
-            val nameIndex = cursor?.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME) ?: -1
-            cursor?.moveToFirst()
-            val fileName = if (nameIndex >= 0) cursor?.getString(nameIndex) ?: "file" else "file"
-            cursor?.close()
-            val data = context.contentResolver.openInputStream(uri)?.readBytes() ?: return@rememberLauncherForActivityResult
-            if (data.size > 10_485_760) return@rememberLauncherForActivityResult // 10MB max
-            onUploadFile(fileName, data)
-        } catch (_: Exception) {}
-    }
+        contract = ActivityResultContracts.GetContent(),
+        onResult = onFilePicked,
+    )
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
@@ -636,6 +646,7 @@ fun ChatPanel(
             modifier = Modifier
                 .fillMaxSize()
                 .navigationBarsPadding()
+                .imePadding()
                 .padding(8.dp),
         ) {
             // Header: tabs + close
@@ -691,10 +702,10 @@ fun ChatPanel(
                 ) {
                     // "All" chip
                     FilterChip(
-                        selected = pmTarget == null,
+                        selected = selectedPmPeerKey == null,
                         onClick = { onClearPmTarget() },
                         label = { Text(stringResource(R.string.filter_all)) },
-                        leadingIcon = if (pmTarget == null) {
+                        leadingIcon = if (selectedPmPeerKey == null) {
                             { Icon(Icons.Default.ChatBubble, null, Modifier.size(16.dp)) }
                         } else null,
                         colors = FilterChipDefaults.filterChipColors(
@@ -702,12 +713,12 @@ fun ChatPanel(
                         ),
                     )
                     // One chip per conversation user
-                    pmConversationUsers.forEach { (userId, nickname) ->
-                        val isSelected = pmTarget?.id == userId
-                        val userUnread = unreadPrivatePerUser[userId] ?: 0
+                    pmConversationUsers.forEach { (peerKey, nickname) ->
+                        val isSelected = selectedPmPeerKey == peerKey
+                        val userUnread = unreadPrivatePerUser[peerKey] ?: 0
                         FilterChip(
                             selected = isSelected,
-                            onClick = { onSelectPmUser(userId) },
+                            onClick = { onSelectPmUser(peerKey) },
                             label = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(nickname)
@@ -746,11 +757,16 @@ fun ChatPanel(
                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "${stringResource(R.string.whisper)} ${whisperTargetName}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
+                        Column {
+                            Text(
+                                text = "${stringResource(R.string.whisper)} ${whisperTargetName}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                            if (isTextWhisper) {
+                                Text(stringResource(R.string.whisper_text_only), style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
                     }
                 }
             }
@@ -761,15 +777,27 @@ fun ChatPanel(
                 1 -> privateMessages
                 else -> emptyList()
             }
-            ChatView(
-                messages = messages,
-                showLinkThumbnails = showLinkThumbnails,
-                autoLoadImages = autoLoadImages,
-                onDownload = onDownload,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            )
+            key(chatTab, selectedPmPeerKey) {
+                ChatView(
+                    messages = messages,
+                    showLinkThumbnails = showLinkThumbnails,
+                    autoLoadImages = autoLoadImages,
+                    onDownload = onDownload,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
+            }
+
+            val canSend = messageText.isNotBlank() && sendStatus != ChatSendStatus.SENDING &&
+                (chatTab == 0 || pmTarget != null || (isWhisperActive && whisperTargetName != null))
+            if (sendStatus == ChatSendStatus.FAILED || sendStatus == ChatSendStatus.PARTIAL) {
+                Text(
+                    text = stringResource(if (sendStatus == ChatSendStatus.PARTIAL)
+                        R.string.chat_send_partial else R.string.chat_send_failed),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
 
             // Message input
             Row(
@@ -779,7 +807,14 @@ fun ChatPanel(
             ) {
                 if (canUploadFiles) {
                     IconButton(
-                        onClick = { filePickerLauncher.launch("*/*") },
+                        onClick = {
+                            if (onBeginUpload()) try {
+                                filePickerLauncher.launch("*/*")
+                            } catch (_: Exception) {
+                                onFilePicked(null)
+                                android.widget.Toast.makeText(context, R.string.file_selection_failed, android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         enabled = (chatTab == 0 || pmTarget != null) && !isWhisperActive,
                     ) {
                         Icon(Icons.Default.AttachFile, contentDescription = stringResource(R.string.attach_file))
@@ -800,6 +835,8 @@ fun ChatPanel(
                         )
                     },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
                     enabled = chatTab == 0 || pmTarget != null || (isWhisperActive && whisperTargetName != null),
                     colors = OutlinedTextFieldDefaults.colors(
                         unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -810,7 +847,7 @@ fun ChatPanel(
                 )
                 IconButton(
                     onClick = onSend,
-                    enabled = messageText.isNotBlank() && (chatTab == 0 || pmTarget != null || (isWhisperActive && whisperTargetName != null)),
+                    enabled = canSend,
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.send))
                 }

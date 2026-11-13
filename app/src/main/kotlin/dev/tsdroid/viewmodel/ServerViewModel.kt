@@ -7,10 +7,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.IBinder
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.ui.graphics.asImageBitmap
@@ -23,6 +25,14 @@ import dev.tsdroid.bridge.FileCache
 import dev.tsdroid.bridge.IconCache
 import dev.tsdroid.bridge.TsClient
 import dev.tsdroid.bridge.TsFileEntry
+import dev.tsdroid.bridge.extractFileLink
+import dev.tsdroid.bridge.fileCacheRelativePath
+import dev.tsdroid.bridge.fileCacheServerKey
+import dev.tsdroid.bridge.fileServerEndpoint
+import dev.tsdroid.bridge.incomingPeerKey
+import dev.tsdroid.bridge.isSameFileServer
+import dev.tsdroid.bridge.matchesRecipient
+import dev.tsdroid.bridge.peerKey
 import dev.tsdroid.han.R
 import dev.tsdroid.data.BookmarkStore
 import dev.tsdroid.data.MessageStore
@@ -37,11 +47,15 @@ import dev.tslib.User
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -62,18 +76,22 @@ data class ChatMessage(
     val isPrivate: Boolean = false,
     val senderId: Int = 0,
     val fileAttachment: FileAttachment? = null,
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val peerName: String? = null,
 )
 
 sealed class DownloadState {
     data object Idle : DownloadState()
     data object Downloading : DownloadState()
     data class Done(val image: ImageBitmap?, val fileUri: android.net.Uri? = null) : DownloadState()
-    data class Error(val message: String) : DownloadState()
+    data class Error(val message: String, val retryable: Boolean = true) : DownloadState()
 }
 
 class ServerViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val TAG = "ServerViewModel"
+        private const val ATTACHMENT_RETRY_DELAY_MS = 5 * 60 * 1000L
+        private const val MAX_SELECTED_FILE_BYTES = 10 * 1024 * 1024
     }
 
     private val messageStore = MessageStore(application)
@@ -84,8 +102,9 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
     private val fileCache = FileCache(application)
     private var serverAddress: String? = null
     private var saveJob: Job? = null
-    // In-memory cache: avoids re-reading from disk + re-decoding for the same image
-    private val downloadCache = mutableMapOf<String, StateFlow<DownloadState>>()
+    // Share in-flight transfers and keep automatic failures on a cooldown.
+    private val downloadCache = java.util.concurrent.ConcurrentHashMap<String, StateFlow<DownloadState>>()
+    private val failedAttachmentUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     private val _previewImageBytes = MutableStateFlow<ByteArray?>(null)
     val previewImageBytes: StateFlow<ByteArray?> = _previewImageBytes.asStateFlow()
@@ -95,6 +114,17 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
     private var tsClient: TsClient? = null
     private var audioBridge: AudioBridge? = null
     private var connectionService: TsConnectionService? = null
+
+    private data class PendingUpload(
+        val client: TsClient,
+        val serverAddress: String,
+        val origin: UploadOrigin,
+        val recipient: User?,
+        val shareInChat: Boolean,
+    )
+    // Retained across configuration changes while the system picker is open.
+    private var pendingChatUpload: PendingUpload? = null
+    private var pendingManagerUpload: PendingUpload? = null
 
     /** Client ID of the local user on the current server (null while not connected). */
     val myClientId: Int? get() = tsClient?.clientId
@@ -161,12 +191,20 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _avatars = MutableStateFlow<Map<String, ImageBitmap>>(emptyMap())
     val avatars: StateFlow<Map<String, ImageBitmap>> = _avatars.asStateFlow()
+    private var avatarVersions: Map<String, String> = emptyMap()
+    private val avatarLoads = java.util.concurrent.ConcurrentHashMap.newKeySet<Triple<String, String, String>>()
+
+    private val chatComposer = ChatComposer(viewModelScope)
+    val messageDraft: StateFlow<String> = chatComposer.draft
+    val chatSendStatus: StateFlow<ChatSendStatus> = chatComposer.status
+
+    fun updateMessageDraft(value: String) = chatComposer.edit(value)
 
     private val _channelMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val channelMessages: StateFlow<List<ChatMessage>> = _channelMessages.asStateFlow()
 
-    private val _privateMessages = MutableStateFlow<Map<Int, List<ChatMessage>>>(emptyMap())
-    val privateMessages: StateFlow<Map<Int, List<ChatMessage>>> = _privateMessages.asStateFlow()
+    private val _privateMessages = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
+    val privateMessages: StateFlow<Map<String, List<ChatMessage>>> = _privateMessages.asStateFlow()
 
     // Separate PTT mode from actual mute state
     private val _isPttMode = MutableStateFlow(true) // true = PTT, false = voice activity
@@ -183,8 +221,8 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
     // Unread message counters
     private val _unreadChannel = MutableStateFlow(0)
     val unreadChannel: StateFlow<Int> = _unreadChannel.asStateFlow()
-    private val _unreadPrivate = MutableStateFlow<Map<Int, Int>>(emptyMap())
-    val unreadPrivate: StateFlow<Map<Int, Int>> = _unreadPrivate.asStateFlow()
+    private val _unreadPrivate = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val unreadPrivate: StateFlow<Map<String, Int>> = _unreadPrivate.asStateFlow()
 
     val audioGain: StateFlow<Float> = settingsStore.audioGain
         .stateIn(viewModelScope, SharingStarted.Eagerly, 1.0f)
@@ -213,6 +251,9 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _fileManagerLoading = MutableStateFlow(false)
     val fileManagerLoading: StateFlow<Boolean> = _fileManagerLoading.asStateFlow()
+    private var fileManagerSession: String? = null
+    private var fileManagerChannelId = 0L
+    private var fileListGeneration = 0L
 
     /** Permission hints for the current channel (bitflags from Channel.PERM_*) */
     val currentChannelPermissions: StateFlow<Long> = combine(_channels, _rawUsers) { channels, users ->
@@ -227,7 +268,7 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
     // Track chat visibility to avoid incrementing unread for visible tab
     var isChatOpen = false
     var activeChatTab = 0
-    var activePmUserId: Int? = null
+    var activePmPeerKey: String? = null
 
     private var bound = false
 
@@ -248,27 +289,18 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }.collect { _users.value = it }
         }
-        // When current channel changes, query permissions if not already known
+        // Only query the current channel, once, after initial state has settled.
         viewModelScope.launch {
             combine(_channels, _rawUsers) { channels, users ->
-                val myId = tsClient?.clientId
-                Log.d(TAG, "PermCheck: tsClient=${tsClient != null}, clientId=$myId, channels=${channels.size}, users=${users.size}")
-                if (myId == null) return@combine null
-                val channelId = users.find { it.id == myId }?.channelId
-                if (channelId == null) { Log.d(TAG, "PermCheck: user not found in users list"); return@combine null }
-                val hints = channels.find { it.id == channelId }?.permissionHints ?: 0L
-                Log.d(TAG, "PermCheck: channelId=$channelId, hints=$hints")
-                channelId to hints
-            }.collect { pair ->
-                val (channelId, hints) = pair ?: return@collect
-                Log.d(TAG, "PermCheck collect: channelId=$channelId, hints=$hints, queried=${queriedPermChannels}")
+                val myId = tsClient?.clientId ?: return@combine null
+                val channelId = users.find { it.id == myId }?.channelId ?: return@combine null
+                channelId to (channels.find { it.id == channelId }?.permissionHints ?: 0L)
+            }.distinctUntilChanged().collectLatest { pair ->
+                val (channelId, hints) = pair ?: return@collectLatest
                 if (hints == 0L && channelId !in queriedPermChannels) {
-                    queriedPermChannels.add(channelId)
-                    Log.i(TAG, "No permission hints for channel $channelId, querying permoverview...")
-                    try {
-                        tsClient?.queryChannelPermissions(channelId)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "queryChannelPermissions failed", e)
+                    delay(2_000) // after the local initial-state resync
+                    if (tsClient?.queryChannelPermissions(channelId) == true) {
+                        queriedPermChannels.add(channelId)
                     }
                 }
             }
@@ -277,7 +309,8 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun bindToService() {
         if (bound) return
-        
+        bound = true // prevent duplicate collectors while waiting for the service
+
         viewModelScope.launch {
             var attempts = 0
             while (TsConnectionService.instance == null && attempts < 50) {
@@ -288,6 +321,7 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
             val service = TsConnectionService.instance
             if (service == null) {
                 Log.e(TAG, "Failed to bind to TsConnectionService: instance is null")
+                bound = false
                 return@launch
             }
 
@@ -306,6 +340,16 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
             connectionService = service
             queriedPermChannels.clear()
 
+            val addr = service.tsClient.serverAddress
+            if (!addr.isNullOrEmpty()) {
+                val (channelMsgs, privateMsgs) = withContext(Dispatchers.IO) { messageStore.load(addr) }
+                _channelMessages.value = channelMsgs.map { migrateMessage(it) }
+                _privateMessages.value = privateMsgs.mapValues { (_, msgs) -> msgs.map { migrateMessage(it) } }
+                // If the view model is cleared during the disk read, do not save
+                // empty state over the existing history.
+                serverAddress = addr
+            }
+
             viewModelScope.launch {
                 service.tsClient.channels.collect { channels ->
                     Log.d(TAG, "Channels updated: ${channels.size}")
@@ -316,6 +360,11 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
             viewModelScope.launch {
                 service.tsClient.users.collect {
                     _rawUsers.value = it
+                    if (_fileManagerOpen.value &&
+                        (service.tsClient.sessionId != fileManagerSession || currentChannelId() != fileManagerChannelId)) {
+                        // An overlay move or reconnect invalidates the visible file list.
+                        closeFileManager()
+                    }
                     loadAvatars(it)
                 }
             }
@@ -343,25 +392,18 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
                 service.tsClient.events.collect { handleEvent(it) }
             }
             viewModelScope.launch {
+                service.tsClient.messages.collect { handleEvent(it) }
+            }
+            viewModelScope.launch {
                 service.tsClient.commandErrors.collect { message ->
                     withContext(Dispatchers.Main) {
                         Toast.makeText(getApplication(), message, Toast.LENGTH_SHORT).show()
                     }
                 }
             }
-            // Load persisted messages
-            viewModelScope.launch {
-                val addr = service.tsClient.serverAddress
-                if (!addr.isNullOrEmpty()) {
-                    serverAddress = addr
-                    val (channelMsgs, privateMsgs) = messageStore.load(addr)
-                    if (channelMsgs.isNotEmpty()) _channelMessages.value = channelMsgs.map { migrateMessage(it) }
-                    if (privateMsgs.isNotEmpty()) _privateMessages.value = privateMsgs.mapValues { (_, msgs) -> msgs.map { migrateMessage(it) } }
-                }
-            }
-            // Start audio capture if not already running
-            if (!service.audioBridge.isCapturing.value) {
-                service.audioBridge.startCapture(viewModelScope, noiseSuppression.value)
+            // The connection may have closed while message history was loading.
+            if (service.tsClient.isConnected && !service.audioBridge.isCapturing.value) {
+                service.ensureAudioCapture(noiseSuppression.value)
             }
             // Apply persisted audio gain
             service.audioBridge.gainFactor = audioGain.value
@@ -379,10 +421,7 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
                 service.audioBridge.isOutputMuted.collect { _isOutputMuted.value = it }
             }
 
-            // Start event loop (guarded by AtomicBoolean — safe if already running)
-            service.tsClient.startEventLoop()
-            
-            bound = true
+            // The foreground service owns the event loop for the connection.
         }
     }
 
@@ -397,11 +436,11 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
                 // Already in memory, make sure it's in the flow
                 continue
             }
-            viewModelScope.launch {
+            viewModelScope.launch(Dispatchers.IO) {
                 iconCache.loadIcon(iconId, client)
                 val icon = iconCache.getIcon(iconId)
                 if (icon != null) {
-                    _channelIcons.value = _channelIcons.value + (iconId to icon)
+                    _channelIcons.update { it + (iconId to icon) }
                 }
             }
         }
@@ -417,157 +456,110 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun loadAvatars(users: List<User>) {
         val client = tsClient ?: return
+        val versions = users.mapNotNull { user ->
+            val uid = user.uid?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val version = user.avatarId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            if (user.isQuery) null else uid to version
+        }.toMap()
+        // Remove a stale image immediately when an avatar changes or disappears.
+        val previous = avatarVersions
+        avatarVersions = versions
+        _avatars.update { cached -> cached.filterKeys { uid -> versions[uid] != null && versions[uid] == previous[uid] } }
+
+        val session = client.sessionId ?: return
         for (user in users) {
-            val uid = user.uid ?: continue
-            if (uid.isEmpty()) continue
+            val uid = user.uid?.takeIf { it.isNotBlank() } ?: continue
+            val version = user.avatarId?.takeIf { it.isNotBlank() } ?: continue
             if (user.isQuery) continue
-            if (user.avatarId.isNullOrEmpty()) continue  // no avatar on server
-            if (avatarCache.getAvatar(uid) != null) continue
-            if (avatarCache.hasNoAvatar(uid)) continue
-            Log.d(TAG, "loadAvatars: launching download for ${user.nickname}")
-            viewModelScope.launch {
-                avatarCache.loadAvatar(uid, client)
-                val avatar = avatarCache.getAvatar(uid)
-                if (avatar != null) {
-                    _avatars.value = _avatars.value + (uid to avatar)
-                    Log.i(TAG, "loadAvatars: avatar loaded for ${user.nickname}")
+            val cached = avatarCache.getAvatar(user, client)
+            if (cached != null) {
+                _avatars.update { it + (uid to cached) }
+                continue
+            }
+            if (avatarCache.hasNoAvatar(user, client)) continue
+            val request = Triple(session, uid, version)
+            if (!avatarLoads.add(request)) continue
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    if (client.sessionId != session) return@launch
+                    val avatar = avatarCache.loadAvatar(user, client)
+                    if (avatar != null && client.sessionId == session &&
+                        _rawUsers.value.any { it.uid == uid && it.avatarId == version }) {
+                        _avatars.update { it + (uid to avatar) }
+                    }
+                } finally {
+                    avatarLoads.remove(request)
                 }
             }
         }
     }
 
+    /** Prefer stable identities; never use an old temporary client ID after reconnect. */
+    fun peerKeyFor(user: User): String = peerKey(user, tsClient?.sessionId)
+
+    private fun peerKeyForClientId(id: Int, sender: String): String =
+        incomingPeerKey(id, sender, tsClient?.users?.value.orEmpty(), tsClient?.sessionId)
+
+    private fun addPrivateMessage(peerKey: String, message: ChatMessage) {
+        _privateMessages.value = _privateMessages.value.toMutableMap().apply {
+            this[peerKey] = (this[peerKey] ?: emptyList()) + message
+        }
+    }
+
     private fun handleEvent(event: Event) {
-        try {
-            when (event.type) {
-                "talk_status_start" -> {
-                    val userId = (event.data["user_id"] as? Number)?.toInt() ?: return
-                    _talkingUserIds.value = _talkingUserIds.value + userId
-                }
-                "talk_status_stop" -> {
-                    val userId = (event.data["user_id"] as? Number)?.toInt() ?: return
-                    _talkingUserIds.value = _talkingUserIds.value - userId
-                }
-                "text_message" -> {
-                    try {
-                        // Safely extract message data with null checks
-                        val target = event.data["target"] as? String
-                        val sender = event.data["sender_name"] as? String
-                        val senderId = (event.data["sender_id"] as? Number)?.toInt()
-                        val text = event.data["message"] as? String
-
-                        // Skip invalid messages early
-                        if (target == null || sender == null || text == null) {
-                            Log.w(TAG, "Invalid text_message: missing required fields")
-                            return
-                        }
-
-                        // Skip system error messages and abuse protection messages
-                        if (text.contains("滥用保护") || 
-                            text.contains("abuse protection") ||
-                            text.contains("flood protection") ||
-                            text.contains("spam protection") ||
-                            text.contains("Cannot perform this action due to") ||
-                            text.contains("无法采取此动作") ||
-                            text.contains("Action currently not possible")) {
-                            Log.i(TAG, "Skipping system abuse protection message: $text")
-                            return
-                        }
-
-                        // Log safely with truncation to avoid huge strings
-                        val safeText = if (text.length > 200) text.take(200) + "..." else text
-                        Log.d(TAG, "Text message: target=$target sender=$sender text=$safeText")
-
-                        // Skip our own messages — we already added them locally
-                        val myId = tsClient?.clientId
-                        if (myId != null && senderId == myId) return
-
-                        // Safely parse file attachment with extra protection
-                        val attachment = try {
-                            if (text.length > 10000) {
-                                Log.w(TAG, "Message too long, skipping file attachment parsing")
-                                null
-                            } else {
-                                parseFileAttachment(text)
+        when (event.type) {
+            "talk_status_start" -> {
+                val userId = (event.data["user_id"] as? Number)?.toInt() ?: return
+                _talkingUserIds.value = _talkingUserIds.value + userId
+            }
+            "talk_status_stop" -> {
+                val userId = (event.data["user_id"] as? Number)?.toInt() ?: return
+                _talkingUserIds.value = _talkingUserIds.value - userId
+            }
+            "channel_deleted" -> {
+                (event.data["channel_id"] as? Number)?.toLong()?.let { queriedPermChannels.remove(it) }
+            }
+            "text_message" -> {
+                val target = event.data["target"] as? String ?: return
+                val text = event.data["message"] as? String ?: return
+                val senderId = (event.data["sender_id"] as? Number)?.toInt()
+                // Our own sends are inserted only after the native send succeeds.
+                if (senderId != null && senderId == tsClient?.clientId) return
+                val sender = (event.data["sender_name"] as? String)?.takeIf { it.isNotBlank() }
+                    ?: getApplication<Application>().getString(R.string.unknown_sender)
+                val attachment = if (text.length <= 10_000) parseFileAttachment(text) else null
+                val displayText = attachment?.fileName ?: text.replace("\u0000", "")
+                when (target.lowercase()) {
+                    "private" -> {
+                        val id = senderId ?: return
+                        val key = peerKeyForClientId(id, sender)
+                        addPrivateMessage(key, ChatMessage(
+                            sender = sender, text = displayText, isPrivate = true, senderId = id,
+                            peerName = sender, fileAttachment = attachment,
+                        ))
+                        if (!isChatOpen || activeChatTab != 1 ||
+                            (activePmPeerKey != null && activePmPeerKey != key)) {
+                            _unreadPrivate.value = _unreadPrivate.value.toMutableMap().apply {
+                                this[key] = (this[key] ?: 0) + 1
                             }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error parsing file attachment", e)
-                            null
                         }
-
-                        // Use original text if attachment parsing fails, display safely
-                        val displayText = if (attachment != null) {
-                            attachment.fileName
-                        } else {
-                            // Sanitize text to avoid display issues
-                            text.replace("\u0000", "").trim()
-                        }
-
-                        // Safely process based on message target
-                        try {
-                            when (target) {
-                                "private" -> {
-                                    val id = senderId ?: run {
-                                        Log.w(TAG, "Private message without sender ID")
-                                        return
-                                    }
-                                    
-                                    // Safely create and add message
-                                    val msg = ChatMessage(
-                                        sender = sender, 
-                                        text = displayText, 
-                                        isPrivate = true, 
-                                        senderId = id, 
-                                        fileAttachment = attachment
-                                    )
-                                    
-                                    val current = _privateMessages.value.toMutableMap()
-                                    val existingMessages = current[id] ?: emptyList()
-                                    current[id] = existingMessages + msg
-                                    _privateMessages.value = current
-                                    
-                                    scheduleSave()
-                                    
-                                    // Only increment if chat is closed or not on this user's PM
-                                    if (!isChatOpen || activeChatTab != 1 || activePmUserId != id) {
-                                        val unread = _unreadPrivate.value.toMutableMap()
-                                        val currentUnread = unread[id] ?: 0
-                                        unread[id] = currentUnread + 1
-                                        _unreadPrivate.value = unread
-                                    }
-                                }
-                                "channel" -> {
-                                    // Safely create and add channel message
-                                    val msg = ChatMessage(
-                                        sender = sender, 
-                                        text = displayText, 
-                                        fileAttachment = attachment
-                                    )
-                                    
-                                    val currentChannelMessages = _channelMessages.value
-                                    _channelMessages.value = currentChannelMessages + msg
-                                    
-                                    scheduleSave()
-                                    
-                                    // Only increment if chat is closed or not on channel tab
-                                    if (!isChatOpen || activeChatTab != 0) {
-                                        val currentUnread = _unreadChannel.value
-                                        _unreadChannel.value = currentUnread + 1
-                                    }
-                                }
-                                else -> {
-                                    Log.w(TAG, "Unknown message target: $target")
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error adding message to UI", e)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error processing text_message event", e)
+                    }
+                    // Server announcements and flood warnings should be visible,
+                    // not silently discarded just because they contain a keyword.
+                    "channel", "server" -> {
+                        _channelMessages.value = _channelMessages.value + ChatMessage(
+                            sender = sender, text = displayText, senderId = senderId ?: 0,
+                            fileAttachment = attachment,
+                        )
+                        if (!isChatOpen || activeChatTab != 0) _unreadChannel.value++
+                    }
+                    else -> {
+                        Log.w(TAG, "Unknown message target: $target")
+                        return
                     }
                 }
+                scheduleSave()
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in handleEvent", e)
         }
     }
 
@@ -587,18 +579,23 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
             } catch (_: Exception) { null }
         }
         // TS3 file transfer URL format: ts3file://host?port=...&channel=...&filename=...&size=...
-        val ts3Start = text.indexOf("ts3file://")
-        if (ts3Start >= 0) {
+        val fileLink = extractFileLink(text)
+        if (fileLink != null) {
             return try {
-                // Extract the ts3file:// URL (until whitespace or end of string)
-                val urlStr = text.substring(ts3Start).takeWhile { !it.isWhitespace() }
-                val uri = android.net.Uri.parse(urlStr)
+                val uri = android.net.Uri.parse(fileLink)
+                val address = serverAddress ?: tsClient?.serverAddress ?: return null
+                val queryPort = uri.getQueryParameter("port")
+                val authorityPort = uri.port.takeIf { it >= 0 }?.toString()
+                if (queryPort != null && authorityPort != null && queryPort.toIntOrNull() != authorityPort.toIntOrNull()) return null
+                if (!isSameFileServer(address, uri.host, queryPort ?: authorityPort)) return null
                 val fileName = uri.getQueryParameter("filename") ?: return null
                 val fileSize = uri.getQueryParameter("size")?.toLongOrNull() ?: 0L
                 val channelId = uri.getQueryParameter("channel")?.toLongOrNull() ?: 0L
                 val ext = fileName.substringAfterLast('.', "").lowercase()
                 val isImage = ext in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp")
-                FileAttachment(fileName, fileSize, fileId = "", isImage, channelId = channelId)
+                val folder = uri.getQueryParameter("path")?.trim('/')?.takeIf { it.isNotEmpty() }
+                val remotePath = "/" + (folder?.let { "$it/" } ?: "") + fileName.trimStart('/')
+                FileAttachment(fileName, fileSize, fileId = remotePath, isImage, channelId = channelId)
             } catch (_: Exception) { null }
         }
         return null
@@ -611,53 +608,90 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
         return msg.copy(text = attachment.fileName, fileAttachment = attachment)
     }
 
-    fun setChatState(open: Boolean, tab: Int, pmUserId: Int? = null) {
+    fun setChatState(open: Boolean, tab: Int, peerKey: String? = null) {
         isChatOpen = open
         activeChatTab = tab
-        activePmUserId = pmUserId
-        // Clear unread for the now-visible tab
-        if (open) {
-            if (tab == 0) clearUnreadChannel()
-            else if (tab == 1 && pmUserId != null) clearUnreadPrivateUser(pmUserId)
+        activePmPeerKey = peerKey
+        if (open && tab == 0) _unreadChannel.value = 0
+        if (open && tab == 1) {
+            _unreadPrivate.value = if (peerKey == null) emptyMap()
+                else _unreadPrivate.value - peerKey
         }
     }
 
-    fun clearUnreadChannel() { _unreadChannel.value = 0 }
-    fun clearUnreadPrivateUser(userId: Int) {
-        val unread = _unreadPrivate.value.toMutableMap()
-        unread.remove(userId)
-        _unreadPrivate.value = unread
+    fun sendChannelMessage(): Boolean {
+        val client = tsClient ?: return chatComposer.reject()
+        val session = client.sessionId ?: return chatComposer.reject()
+        val channelId = currentChannelId()
+        if (!client.isConnected || channelId == 0L) return chatComposer.reject()
+        return chatComposer.submit { text ->
+            if (client.sendChannelMessage(text, expectedChannelId = channelId, expectedSession = session)) {
+                _channelMessages.value = _channelMessages.value + ChatMessage(
+                    sender = getApplication<Application>().getString(R.string.me_sender), text = text, isMe = true,
+                )
+                scheduleSave()
+                ChatSendResult.SENT
+            } else ChatSendResult.FAILED
+        }
     }
 
-    fun sendChannelMessage(text: String) {
-        if (text.isBlank()) return
-        tsClient?.sendChannelMessage(text)
-        _channelMessages.value = _channelMessages.value + ChatMessage(
-            sender = getApplication<Application>().getString(R.string.me_sender), text = text, isMe = true,
-        )
+    private suspend fun sendPrivateTo(
+        client: TsClient, user: User, peerKey: String, session: String, text: String,
+    ): Boolean {
+        if (!client.sendPrivateMessage(user.id, text, user.uid, user.databaseId, user.nickname, session)) return false
+        addPrivateMessage(peerKey, ChatMessage(
+            sender = getApplication<Application>().getString(R.string.me_sender), text = text,
+            isMe = true, isPrivate = true, senderId = user.id, peerName = user.nickname,
+        ))
         scheduleSave()
+        return true
     }
 
-    fun sendPrivateMessage(userId: Int, text: String) {
-        if (text.isBlank()) return
-        tsClient?.sendPrivateMessage(userId, text)
-        val msg = ChatMessage(
-            sender = getApplication<Application>().getString(R.string.me_sender), text = text, isMe = true, isPrivate = true, senderId = userId,
-        )
-        val current = _privateMessages.value.toMutableMap()
-        current[userId] = (current[userId] ?: emptyList()) + msg
-        _privateMessages.value = current
-        scheduleSave()
+    fun sendPrivateMessage(user: User): Boolean {
+        val client = tsClient ?: return chatComposer.reject()
+        val session = client.sessionId ?: return chatComposer.reject()
+        if (!client.isConnected) return chatComposer.reject()
+        // Use the selected user's snapshot, not a fresh lookup by temporary ID.
+        // TsClient verifies the identity again on the native thread before sending.
+        val key = peerKey(user, session)
+        return chatComposer.submit { text ->
+            if (sendPrivateTo(client, user, key, session, text)) ChatSendResult.SENT else ChatSendResult.FAILED
+        }
     }
-
-    // ── Whisper (密聊) ──────────────────────────────────────────
 
     fun toggleWhisper(userId: Int) {
+        val wasActive = WhisperManager.isWhisperActive
+        // The native library currently supports only text fallback. Pause
+        // channel audio before entering that mode, not after the UI changes.
+        if (!wasActive) audioBridge?.setChannelVoiceSuppressed(true)
         WhisperManager.toggleWhisper(userId)
+        val textOnly = WhisperManager.isWhisperActive && WhisperManager.isTextFallback
+        if (textOnly) {
+            _isPttMode.value = true
+            if (!wasActive) Toast.makeText(getApplication(), R.string.whisper_text_only, Toast.LENGTH_LONG).show()
+        } else {
+            // Never resume voice activity automatically when whisper ends.
+            audioBridge?.setMuted(true)
+            audioBridge?.setChannelVoiceSuppressed(false)
+            _isPttMode.value = true
+        }
     }
 
-    fun sendWhisperMessage(text: String) {
-        WhisperManager.sendWhisperMessage(text)
+    fun sendWhisperMessage(): Boolean {
+        val client = tsClient ?: return chatComposer.reject()
+        val session = client.sessionId ?: return chatComposer.reject()
+        if (!WhisperManager.isWhisperActive || !client.isConnected) return chatComposer.reject()
+        // Capture recipient identities and session now; IDs can be reused while sends are paced.
+        val recipients = WhisperManager.whisperTargetUsers.map { it to peerKey(it, session) }
+        if (recipients.isEmpty()) return chatComposer.reject()
+        return chatComposer.submit { text ->
+            val sent = recipients.count { (user, key) -> sendPrivateTo(client, user, key, session, text) }
+            when (sent) {
+                recipients.size -> ChatSendResult.SENT
+                0 -> ChatSendResult.FAILED
+                else -> ChatSendResult.PARTIAL
+            }
+        }
     }
 
     val whisperCandidateUsers: List<User>
@@ -694,6 +728,10 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toggleVoiceMode() {
+        if (WhisperManager.isWhisperActive && WhisperManager.isTextFallback) {
+            Toast.makeText(getApplication(), R.string.whisper_text_only, Toast.LENGTH_SHORT).show()
+            return
+        }
         val newPttMode = !_isPttMode.value
         _isPttMode.value = newPttMode
         // When switching to PTT mode, mute. When switching to VA, unmute.
@@ -715,92 +753,225 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setPushToTalk(pressed: Boolean) {
+        if (pressed && WhisperManager.isWhisperActive && WhisperManager.isTextFallback) {
+            Toast.makeText(getApplication(), R.string.whisper_text_only, Toast.LENGTH_SHORT).show()
+            return
+        }
         // Only changes mute state, NOT isPttMode — avoids UI recomposition swap
         audioBridge?.setMuted(!pressed)
     }
 
     private fun currentChannelId(): Long {
-        val myId = tsClient?.clientId ?: return 0
-        return _rawUsers.value.find { it.id == myId }?.channelId ?: 0
+        val client = tsClient ?: return 0
+        val myId = client.clientId ?: return 0
+        return client.users.value.find { it.id == myId }?.channelId ?: 0
     }
 
-    fun uploadAndSendFile(fileName: String, data: ByteArray, isPrivate: Boolean, targetId: Int?) {
-        val client = tsClient ?: return
+    private fun fileShareUrl(channelId: Long, folder: String, name: String, size: Long): String? {
+        val address = serverAddress ?: return null
+        val endpoint = fileServerEndpoint(address) ?: return null
+        return android.net.Uri.Builder().scheme("ts3file").authority(endpoint.authority)
+            .appendQueryParameter("port", endpoint.port.toString())
+            .appendQueryParameter("channel", channelId.toString())
+            .appendQueryParameter("path", folder)
+            .appendQueryParameter("filename", name)
+            .appendQueryParameter("isDir", "0")
+            .appendQueryParameter("size", size.toString())
+            .build().toString()
+    }
+
+    private fun fileAttachment(name: String, size: Long, channelId: Long, folder: String): FileAttachment {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        val isImage = ext in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp")
+        return FileAttachment(name, size, "${folder.trimEnd('/')}/$name", isImage, channelId)
+    }
+
+    private suspend fun sendFileLink(
+        client: TsClient, target: User?, session: String, url: String, attachment: FileAttachment,
+    ): Boolean {
+        val sent = if (target == null) client.sendChannelMessage(url, attachment.channelId, session)
+            else client.sendPrivateMessage(target.id, url, target.uid, target.databaseId, target.nickname, session)
+        if (!sent) return false
+        val message = ChatMessage(
+            sender = getApplication<Application>().getString(R.string.me_sender),
+            text = attachment.fileName, isMe = true, isPrivate = target != null,
+            senderId = target?.id ?: 0, peerName = target?.nickname, fileAttachment = attachment,
+        )
+        if (target == null) _channelMessages.value = _channelMessages.value + message
+        else addPrivateMessage(peerKey(target, session), message)
+        scheduleSave()
+        return true
+    }
+
+    private fun prepareUpload(folder: String, recipient: User?, shareInChat: Boolean): PendingUpload? {
+        val client = tsClient ?: return null
+        val session = client.sessionId ?: return null
+        val address = client.serverAddress ?: return null
         val channelId = currentChannelId()
-        if (channelId == 0L) return
+        if (!client.isConnected || channelId <= 0) return null
+        val upload = PendingUpload(client, address, UploadOrigin(session, channelId, folder), recipient, shareInChat)
+        return upload.takeIf(::isUploadCurrent)
+    }
+
+    private fun isUploadCurrent(upload: PendingUpload): Boolean {
+        val client = upload.client
+        if (tsClient !== client || !upload.origin.matches(client.sessionId, currentChannelId(), client.isConnected)) {
+            return false
+        }
+        val target = upload.recipient ?: return true
+        val actual = client.users.value.firstOrNull { it.id == target.id }
+        return matchesRecipient(actual, target.uid, target.databaseId, target.nickname)
+    }
+
+    /** Capture the destination before launching the external picker. */
+    fun beginChatUpload(isPrivate: Boolean, target: User?): Boolean {
+        val upload = if (isPrivate && target == null) null else prepareUpload("/", if (isPrivate) target else null, true)
+        pendingChatUpload = upload
+        if (upload == null) Toast.makeText(getApplication(), R.string.file_share_failed, Toast.LENGTH_SHORT).show()
+        return upload != null
+    }
+
+    fun beginManagerUpload(): Boolean {
+        val client = tsClient
+        val upload = if (client != null && isFileManagerCurrent(client)) prepareUpload(_currentFilePath.value, null, false) else null
+        pendingManagerUpload = upload
+        if (upload == null) Toast.makeText(getApplication(), R.string.file_upload_failed, Toast.LENGTH_SHORT).show()
+        return upload != null
+    }
+
+    fun completeChatUpload(uri: Uri?) {
+        val upload = pendingChatUpload
+        pendingChatUpload = null
+        completeUpload(upload, uri)
+    }
+
+    fun completeManagerUpload(uri: Uri?) {
+        val upload = pendingManagerUpload
+        pendingManagerUpload = null
+        completeUpload(upload, uri)
+    }
+
+    private fun completeUpload(upload: PendingUpload?, uri: Uri?) {
+        if (uri == null) return // picker cancelled
+        if (upload == null || !isUploadCurrent(upload)) {
+            Toast.makeText(getApplication(), R.string.file_selection_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
         viewModelScope.launch {
-            val path = "/$fileName"
-            val success = client.uploadFile(channelId, path, data, overwrite = true)
-            if (success) {
-                val addr = serverAddress ?: "localhost"
-                val host = addr.substringBefore(':')
-                val port = addr.substringAfter(':', "9987")
-                val fileDateTime = System.currentTimeMillis() / 1000
-                val ts3Url = "ts3file://${host}?port=${port}&channel=${channelId}" +
-                    "&path=/&filename=${fileName}&isDir=0&size=${data.size}&fileDateTime=${fileDateTime}"
-
-                val ext = fileName.substringAfterLast('.', "").lowercase()
-                val isImage = ext in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp")
-                val attachment = FileAttachment(fileName, data.size.toLong(), fileId = "", isImage, channelId = channelId)
-                val meSender = getApplication<Application>().getString(R.string.me_sender)
-
-                if (isPrivate && targetId != null) {
-                    tsClient?.sendPrivateMessage(targetId, ts3Url)
-                    val msg = ChatMessage(sender = meSender, text = fileName, isMe = true, isPrivate = true, senderId = targetId, fileAttachment = attachment)
-                    val current = _privateMessages.value.toMutableMap()
-                    current[targetId] = (current[targetId] ?: emptyList()) + msg
-                    _privateMessages.value = current
-                } else {
-                    tsClient?.sendChannelMessage(ts3Url)
-                    val msg = ChatMessage(sender = meSender, text = fileName, isMe = true, fileAttachment = attachment)
-                    _channelMessages.value = _channelMessages.value + msg
+            val (name, data) = try {
+                withContext(Dispatchers.IO) {
+                    val resolver = getApplication<Application>().contentResolver
+                    val displayName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+                    } ?: "file"
+                    val bytes = resolver.openInputStream(uri)?.use { input ->
+                        readSelectedFile(input, MAX_SELECTED_FILE_BYTES) { coroutineContext.ensureActive() }
+                    } ?: throw java.io.IOException("Could not open the selected file")
+                    safeUploadName(displayName) to bytes
                 }
-                scheduleSave()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: SelectedFileTooLargeException) {
+                Toast.makeText(getApplication(), R.string.file_too_large, Toast.LENGTH_SHORT).show()
+                return@launch
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not read selected file", e)
+                Toast.makeText(getApplication(), R.string.file_selection_failed, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (!isUploadCurrent(upload)) {
+                Toast.makeText(getApplication(), R.string.file_selection_failed, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val origin = upload.origin
+            val path = "${origin.folder.trimEnd('/')}/$name"
+            val uploaded = upload.client.uploadFile(
+                origin.channelId, path, data, overwrite = true, expectedSession = origin.session,
+                expectedCurrentChannelId = origin.channelId,
+            )
+            if (uploaded) {
+                // An overwrite makes any previous local copy of this path stale.
+                val host = fileCacheServerKey(upload.serverAddress)
+                val cachePath = fileCacheRelativePath(origin.channelId, path)
+                val cacheKey = "$host/$cachePath"
+                downloadCache.remove(cacheKey)
+                failedAttachmentUntil.remove(cacheKey)
+                withContext(Dispatchers.IO) { fileCache.remove(host, cachePath) }
+            }
+            val success = if (uploaded && upload.shareInChat && isUploadCurrent(upload)) {
+                val url = fileShareUrl(origin.channelId, origin.folder, name, data.size.toLong())
+                val attachment = fileAttachment(name, data.size.toLong(), origin.channelId, origin.folder)
+                url != null && sendFileLink(upload.client, upload.recipient, origin.session, url, attachment)
+            } else uploaded && !upload.shareInChat
+            if (!success) {
+                Toast.makeText(getApplication(), if (upload.shareInChat) R.string.file_share_failed else R.string.file_upload_failed, Toast.LENGTH_SHORT).show()
+            } else if (!upload.shareInChat && isUploadCurrent(upload) && _currentFilePath.value == origin.folder) {
+                delay(500)
+                if (isUploadCurrent(upload) && _currentFilePath.value == origin.folder) refreshFileList()
             }
         }
     }
 
-    fun downloadAttachment(attachment: FileAttachment): StateFlow<DownloadState> {
-        val host = serverAddress?.substringBefore(':') ?: "unknown"
-        val cachePath = attachment.fileName.trimStart('/')
+    fun downloadAttachment(attachment: FileAttachment, automatic: Boolean = false): StateFlow<DownloadState> {
+        val context = getApplication<Application>()
+        fun error(message: Int, retryable: Boolean = true): StateFlow<DownloadState> =
+            MutableStateFlow(DownloadState.Error(context.getString(message), retryable))
+
+        // MyTeamSpeak cloud file IDs are not TeamSpeak channel paths.
+        if (attachment.fileId.isNotBlank() && !attachment.fileId.startsWith('/')) {
+            return error(R.string.download_not_supported, retryable = false)
+        }
+        val client = tsClient ?: return error(R.string.file_download_failed)
+        val session = client.sessionId ?: return error(R.string.file_download_failed)
+        val address = serverAddress ?: client.serverAddress ?: return error(R.string.file_download_failed)
+        if (!client.isConnected) return error(R.string.file_download_failed)
+        val channelId = if (attachment.channelId != 0L) attachment.channelId else currentChannelId()
+        if (channelId <= 0L) return error(R.string.file_download_failed)
+        val remotePath = attachment.fileId.takeIf { it.startsWith('/') } ?: "/${attachment.fileName}"
+        val host = fileCacheServerKey(address)
+        val cachePath = fileCacheRelativePath(channelId, remotePath)
         val cacheKey = "$host/$cachePath"
 
-        // Return existing in-memory result if already loaded
-        downloadCache[cacheKey]?.let { existing ->
-            if (existing.value is DownloadState.Done) return existing
+        downloadCache[cacheKey]?.let { return it }
+        if (automatic && (failedAttachmentUntil[cacheKey] ?: 0L) > System.nanoTime() / 1_000_000L) {
+            return error(R.string.file_download_failed)
         }
-
+        if (!automatic) failedAttachmentUntil.remove(cacheKey)
         val state = MutableStateFlow<DownloadState>(DownloadState.Downloading)
-        val client = tsClient ?: run {
-            state.value = DownloadState.Error("Pas connecté")
-            return state
-        }
-        val channelId = if (attachment.channelId != 0L) attachment.channelId else currentChannelId()
-
-        downloadCache[cacheKey] = state
+        downloadCache.putIfAbsent(cacheKey, state)?.let { return it }
 
         viewModelScope.launch(Dispatchers.IO) {
-            // Check disk cache first
-            val cached = fileCache.get(host, cachePath)
-            val bytes = cached ?: client.downloadFile(channelId, "/${attachment.fileName}")
-
-            if (bytes != null) {
-                // Save to disk cache if this was a fresh download
-                if (cached == null) {
-                    fileCache.put(host, cachePath, bytes)
+            try {
+                val cached = fileCache.get(host, cachePath)
+                val bytes = cached ?: client.downloadFile(channelId, remotePath, automatic, session)
+                if (bytes == null || client.sessionId != session || !client.isConnected) {
+                    throw IllegalStateException("Attachment unavailable or connection changed")
                 }
-
-                if (attachment.isImage) {
-                    val bmp = decodeSampledBitmap(bytes, 1280)
+                if (cached == null) fileCache.put(host, cachePath, bytes)
+                val done = if (attachment.isImage) {
+                    val bitmap = decodeSampledBitmap(bytes, 1280)?.asImageBitmap()
                     val uri = fileCache.getUri(host, cachePath)
-                    state.value = DownloadState.Done(bmp?.asImageBitmap(), uri)
+                    if (bitmap == null && uri == null) throw IllegalStateException("Could not open image")
+                    DownloadState.Done(bitmap, uri)
                 } else {
-                    val dlUri = saveToDownloads(attachment.fileName.substringAfterLast('/'), bytes)
-                    state.value = DownloadState.Done(null, dlUri)
+                    val uri = saveToDownloads(safeUploadName(attachment.fileName), bytes)
+                        ?: throw IllegalStateException("Could not save file")
+                    DownloadState.Done(null, uri)
                 }
-            } else {
-                downloadCache.remove(cacheKey)
-                state.value = DownloadState.Error("Échec du téléchargement")
+                failedAttachmentUntil.remove(cacheKey)
+                state.value = done
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                downloadCache.remove(cacheKey, state)
+                state.value = DownloadState.Error(context.getString(R.string.file_download_failed))
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to download attachment", e)
+                if (client.isConnected && client.sessionId == session) {
+                    failedAttachmentUntil[cacheKey] = System.nanoTime() / 1_000_000L + ATTACHMENT_RETRY_DELAY_MS
+                }
+                downloadCache.remove(cacheKey, state)
+                state.value = DownloadState.Error(context.getString(R.string.file_download_failed))
             }
         }
         return state
@@ -808,25 +979,32 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
 
     private suspend fun saveToDownloads(fileName: String, data: ByteArray): android.net.Uri? {
         val context = getApplication<Application>()
+        val resolver = context.contentResolver
+        var pending: android.net.Uri? = null
         return try {
             val contentValues = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, fileName)
                 put(MediaStore.Downloads.IS_PENDING, 1)
             }
-            val uri = context.contentResolver.insert(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues
-            ) ?: return null
-            context.contentResolver.openOutputStream(uri)?.use { it.write(data) }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues) ?: return null
+            pending = uri
+            val output = resolver.openOutputStream(uri) ?: throw java.io.IOException("No output stream")
+            output.use { it.write(data) }
             contentValues.clear()
             contentValues.put(MediaStore.Downloads.IS_PENDING, 0)
-            context.contentResolver.update(uri, contentValues, null, null)
+            if (resolver.update(uri, contentValues, null, null) <= 0) throw java.io.IOException("Could not finalize file")
+            pending = null
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, context.getString(R.string.file_saved, fileName), Toast.LENGTH_SHORT).show()
             }
             uri
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "saveToDownloads failed for $fileName", e)
             null
+        } finally {
+            pending?.let { try { resolver.delete(it, null, null) } catch (_: Exception) {} }
         }
     }
 
@@ -852,42 +1030,65 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
         return BitmapFactory.decodeByteArray(data, 0, data.size, decodeOptions)
     }
 
+    private fun isFileManagerCurrent(client: TsClient): Boolean =
+        _fileManagerOpen.value && client.isConnected && client.sessionId == fileManagerSession &&
+            fileManagerChannelId > 0 && currentChannelId() == fileManagerChannelId
+
     fun toggleFileManager() {
         if (_fileManagerOpen.value) {
             closeFileManager()
         } else {
+            val client = tsClient ?: return
+            val session = client.sessionId ?: return
+            val channelId = currentChannelId()
+            if (!client.isConnected || channelId <= 0) return
+            fileManagerSession = session
+            fileManagerChannelId = channelId
             _fileManagerOpen.value = true
             refreshFileList()
         }
     }
 
     fun closeFileManager() {
+        fileListGeneration++
+        fileManagerSession = null
+        fileManagerChannelId = 0L
         _fileManagerOpen.value = false
+        _fileManagerLoading.value = false
         _currentFilePath.value = "/"
         _fileList.value = emptyList()
     }
 
     fun refreshFileList() {
-        val client = tsClient ?: run { Log.w(TAG, "refreshFileList: tsClient is null"); return }
-        val channelId = currentChannelId()
-        if (channelId == 0L) { Log.w(TAG, "refreshFileList: channelId is 0"); return }
-        Log.d(TAG, "refreshFileList: channelId=$channelId path=${_currentFilePath.value}")
+        val client = tsClient ?: return
+        val session = fileManagerSession ?: return
+        val channelId = fileManagerChannelId
+        if (!isFileManagerCurrent(client)) return
+        val path = _currentFilePath.value
+        val generation = ++fileListGeneration
         _fileManagerLoading.value = true
         viewModelScope.launch {
-            val files = client.listFiles(channelId, _currentFilePath.value)
-            Log.d(TAG, "refreshFileList: got ${files?.size ?: "null"} files")
-            _fileList.value = files ?: emptyList()
+            val files = client.listFiles(channelId, path, expectedSession = session)
+            if (generation != fileListGeneration) return@launch
             _fileManagerLoading.value = false
+            if (!_fileManagerOpen.value || client.sessionId != session || currentChannelId() != channelId ||
+                _currentFilePath.value != path) return@launch
+            _fileList.value = files ?: emptyList()
+            if (files == null) Toast.makeText(getApplication(), R.string.file_list_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
     fun navigateToFolder(folderName: String) {
+        val client = tsClient ?: return
+        if (!isFileManagerCurrent(client)) return
         val current = _currentFilePath.value
         _currentFilePath.value = if (current.endsWith("/")) "$current$folderName/" else "$current/$folderName/"
         refreshFileList()
     }
 
     fun navigateUp() {
+        val client = tsClient ?: return
+        if (!isFileManagerCurrent(client)) return
         val current = _currentFilePath.value.trimEnd('/')
         if (current == "" || current == "/") return
         val parent = current.substringBeforeLast('/', "/")
@@ -897,7 +1098,8 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun deleteFileInChannel(name: String) {
         val client = tsClient ?: return
-        val channelId = currentChannelId()
+        if (!isFileManagerCurrent(client)) return
+        val channelId = fileManagerChannelId
         val fullPath = _currentFilePath.value + name
         client.deleteFile(channelId, fullPath)
         viewModelScope.launch { delay(500); refreshFileList() }
@@ -905,7 +1107,8 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun renameFileInChannel(oldName: String, newName: String) {
         val client = tsClient ?: return
-        val channelId = currentChannelId()
+        if (!isFileManagerCurrent(client)) return
+        val channelId = fileManagerChannelId
         val currentPath = _currentFilePath.value
         client.renameFile(channelId, currentPath + oldName, currentPath + newName)
         viewModelScope.launch { delay(500); refreshFileList() }
@@ -913,8 +1116,8 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun createDirectoryInChannel(dirName: String) {
         val client = tsClient ?: run { Log.w(TAG, "createDirectory: tsClient is null"); return }
-        val channelId = currentChannelId()
-        if (channelId == 0L) { Log.w(TAG, "createDirectory: channelId is 0"); return }
+        if (!isFileManagerCurrent(client)) return
+        val channelId = fileManagerChannelId
         val fullPath = _currentFilePath.value + dirName
         Log.d(TAG, "createDirectory: channelId=$channelId path=$fullPath")
         try {
@@ -925,81 +1128,73 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch { delay(500); refreshFileList() }
     }
 
-    fun shareFile(targetUserId: Int?, fileName: String, fileSize: Long) {
-        val channelId = currentChannelId()
-        if (channelId == 0L) return
-        val addr = serverAddress ?: return
-        val host = addr.substringBefore(':')
-        val port = addr.substringAfter(':', "9987")
-        val currentPath = _currentFilePath.value
-        val ts3Url = "ts3file://${host}?port=${port}&channel=${channelId}" +
-            "&path=${currentPath}&filename=${fileName}&isDir=0&size=${fileSize}"
-        val ext = fileName.substringAfterLast('.', "").lowercase()
-        val isImage = ext in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp")
-        val attachment = FileAttachment(fileName, fileSize, fileId = "", isImage, channelId = channelId)
-        val meSender = getApplication<Application>().getString(R.string.me_sender)
-
-        if (targetUserId != null) {
-            tsClient?.sendPrivateMessage(targetUserId, ts3Url)
-            val msg = ChatMessage(
-                sender = meSender, text = fileName, isMe = true,
-                isPrivate = true, senderId = targetUserId, fileAttachment = attachment,
-            )
-            val current = _privateMessages.value.toMutableMap()
-            current[targetUserId] = (current[targetUserId] ?: emptyList()) + msg
-            _privateMessages.value = current
-        } else {
-            tsClient?.sendChannelMessage(ts3Url)
-            _channelMessages.value = _channelMessages.value + ChatMessage(
-                sender = meSender, text = fileName, isMe = true, fileAttachment = attachment,
-            )
+    fun shareFile(target: User?, fileName: String, fileSize: Long) {
+        val client = tsClient ?: return
+        if (!isFileManagerCurrent(client)) return
+        val session = client.sessionId ?: return
+        val channelId = fileManagerChannelId
+        val folder = _currentFilePath.value
+        val url = fileShareUrl(channelId, folder, fileName, fileSize) ?: return
+        val attachment = fileAttachment(fileName, fileSize, channelId, folder)
+        viewModelScope.launch {
+            if (!sendFileLink(client, target, session, url, attachment)) {
+                Toast.makeText(getApplication(), R.string.file_share_failed, Toast.LENGTH_SHORT).show()
+            }
         }
-        scheduleSave()
     }
 
     fun downloadFileFromManager(fileName: String) {
         val client = tsClient ?: return
-        val channelId = currentChannelId()
-        val currentPath = _currentFilePath.value
-        val fullName = currentPath.trimStart('/') + fileName
-        val host = serverAddress?.substringBefore(':') ?: "unknown"
-        val cachePath = fullName.trimStart('/')
+        if (!isFileManagerCurrent(client)) return
+        val session = client.sessionId ?: return
+        val address = serverAddress ?: client.serverAddress ?: return
+        val channelId = fileManagerChannelId
+        val remotePath = "/" + _currentFilePath.value.trimStart('/') + fileName
+        val host = fileCacheServerKey(address)
+        val cachePath = fileCacheRelativePath(channelId, remotePath)
 
         viewModelScope.launch(Dispatchers.IO) {
             val cached = fileCache.get(host, cachePath)
-            val bytes = cached ?: client.downloadFile(channelId, "/$fullName")
-            if (bytes != null) {
-                if (cached == null) {
-                    fileCache.put(host, cachePath, bytes)
+            val bytes = cached ?: client.downloadFile(channelId, remotePath, expectedSession = session)
+            if (client.sessionId != session || !client.isConnected) return@launch
+            if (bytes == null) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), R.string.file_download_failed, Toast.LENGTH_SHORT).show()
                 }
-                val dlUri = saveToDownloads(fileName, bytes)
-                if (dlUri != null) {
-                    withContext(Dispatchers.Main) {
-                        openFileUri(dlUri, fileName)
-                    }
-                }
+                return@launch
+            }
+            if (cached == null) fileCache.put(host, cachePath, bytes)
+            val dlUri = saveToDownloads(safeUploadName(fileName), bytes)
+            withContext(Dispatchers.Main) {
+                if (dlUri != null) openFileUri(dlUri, fileName)
+                else Toast.makeText(getApplication(), R.string.file_download_failed, Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     fun previewImageFile(fileName: String) {
         val client = tsClient ?: return
-        val channelId = currentChannelId()
-        val currentPath = _currentFilePath.value
-        val fullName = currentPath.trimStart('/') + fileName
-        val host = serverAddress?.substringBefore(':') ?: "unknown"
-        val cachePath = fullName.trimStart('/')
+        if (!isFileManagerCurrent(client)) return
+        val session = client.sessionId ?: return
+        val address = serverAddress ?: client.serverAddress ?: return
+        val channelId = fileManagerChannelId
+        val remotePath = "/" + _currentFilePath.value.trimStart('/') + fileName
+        val host = fileCacheServerKey(address)
+        val cachePath = fileCacheRelativePath(channelId, remotePath)
 
         viewModelScope.launch(Dispatchers.IO) {
             val cached = fileCache.get(host, cachePath)
-            val bytes = cached ?: client.downloadFile(channelId, "/$fullName")
-            if (bytes != null) {
-                if (cached == null) {
-                    fileCache.put(host, cachePath, bytes)
+            val bytes = cached ?: client.downloadFile(channelId, remotePath, expectedSession = session)
+            if (client.sessionId != session || !client.isConnected) return@launch
+            if (bytes == null) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(getApplication(), R.string.file_download_failed, Toast.LENGTH_SHORT).show()
                 }
-                _previewImageBytes.value = bytes
-                _previewImageName.value = fileName
+                return@launch
             }
+            if (cached == null) fileCache.put(host, cachePath, bytes)
+            _previewImageBytes.value = bytes
+            _previewImageName.value = fileName
         }
     }
 
@@ -1021,20 +1216,6 @@ class ServerViewModel(application: Application) : AndroidViewModel(application) 
             }
             context.startActivity(intent)
         } catch (_: Exception) {}
-    }
-
-    fun uploadFileToChannel(fileName: String, data: ByteArray) {
-        val client = tsClient ?: return
-        val channelId = currentChannelId()
-        if (channelId == 0L) return
-        val path = _currentFilePath.value + fileName
-        viewModelScope.launch {
-            val success = client.uploadFile(channelId, path, data, overwrite = true)
-            if (success) {
-                delay(500)
-                refreshFileList()
-            }
-        }
     }
 
     fun disconnect() {

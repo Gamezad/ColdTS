@@ -4,10 +4,19 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- ColdTs snowflake -->
-    <path
-        android:pathData="M54.00,78.00L54.00,30.00 M54.00,70.50L48.34,64.84 M54.00,70.50L59.66,64.84 M54.00,37.50L59.66,31.84 M54.00,37.50L48.34,31.84 M33.22,66.00L74.78,42.00 M39.71,62.25L41.78,54.52 M39.71,62.25L47.44,64.32 M68.29,45.75L76.02,47.82 M68.29,45.75L70.36,38.02 M33.22,42.00L74.78,66.00 M39.71,45.75L47.44,43.68 M39.71,45.75L41.78,53.48 M68.29,62.25L70.36,69.98 M68.29,62.25L76.02,60.18"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="3.6"
-        android:strokeLineCap="round"/>
+    <!-- A quiet halo, framed by a headset and an icy crystal. Everything fits
+         in the adaptive-icon safe zone and remains legible at launcher sizes. -->
+    <path android:fillColor="#123B59"
+        android:pathData="M54,35 A19,19 0,1 1,53.99 35" />
+    <path android:fillColor="#00000000" android:strokeColor="#5CCBEF"
+        android:strokeWidth="4.5" android:strokeLineCap="round"
+        android:pathData="M31,54 C31,39.9 41.1,29 54,29 C66.9,29 77,39.9 77,54" />
+    <path android:fillColor="#88DEF4"
+        android:pathData="M31,50 C28.8,50 27,51.8 27,54 L27,63 C27,65.2 28.8,67 31,67 L34,67 C36.2,67 38,65.2 38,63 L38,54 C38,51.8 36.2,50 34,50 Z" />
+    <path android:fillColor="#88DEF4"
+        android:pathData="M74,50 C71.8,50 70,51.8 70,54 L70,63 C70,65.2 71.8,67 74,67 L77,67 C79.2,67 81,65.2 81,63 L81,54 C81,51.8 79.2,50 77,50 Z" />
+    <path android:fillColor="#00000000" android:strokeColor="#EDFCFF"
+        android:strokeWidth="3.1" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M54,38 L54,68 M41,45.5 L67,60.5 M41,60.5 L67,45.5 M54,43 L49.8,39.5 M54,43 L58.2,39.5 M54,63 L49.8,66.5 M54,63 L58.2,66.5 M45.3,48 L40.5,49.7 M45.3,48 L44.2,43 M62.7,58 L63.8,63 M62.7,58 L67.5,56.3 M45.3,58 L44.2,63 M45.3,58 L40.5,56.3 M62.7,48 L67.5,49.7 M62.7,48 L63.8,43" />
+    <path android:fillColor="#B9F4FF" android:pathData="M54,49.5 A3.5,3.5 0,1 1,53.99 49.5" />
 </vector>

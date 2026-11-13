@@ -35,6 +35,7 @@ class FileCache(private val context: Context) {
      * Crée le fichier via MediaStore. Écrase si existe déjà.
      */
     fun put(serverHost: String, relativePath: String, data: ByteArray) {
+        var pending: android.net.Uri? = null
         try {
             // Delete existing file if any
             findFileUri(serverHost, relativePath)?.let {
@@ -68,14 +69,18 @@ class FileCache(private val context: Context) {
                 Log.w(TAG, "Failed to insert file into MediaStore: $relativePath")
                 return
             }
-
-            contentResolver.openOutputStream(uri)?.use { it.write(data) }
+            pending = uri
+            val output = contentResolver.openOutputStream(uri) ?: throw java.io.IOException("No output stream")
+            output.use { it.write(data) }
 
             values.clear()
             values.put(MediaStore.Files.FileColumns.IS_PENDING, 0)
-            contentResolver.update(uri, values, null, null)
+            if (contentResolver.update(uri, values, null, null) <= 0) throw java.io.IOException("Could not finalize cache file")
+            pending = null
         } catch (e: Exception) {
             Log.w(TAG, "Failed to cache $relativePath", e)
+        } finally {
+            pending?.let { try { contentResolver.delete(it, null, null) } catch (_: Exception) {} }
         }
     }
 
@@ -88,6 +93,14 @@ class FileCache(private val context: Context) {
 
     fun getUri(serverHost: String, relativePath: String): android.net.Uri? {
         return findFileUri(serverHost, relativePath)
+    }
+
+    fun remove(serverHost: String, relativePath: String) {
+        try {
+            findFileUri(serverHost, relativePath)?.let { contentResolver.delete(it, null, null) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to remove cached file $relativePath", e)
+        }
     }
 
     private fun findFileUri(serverHost: String, relativePath: String): android.net.Uri? {

@@ -58,6 +58,7 @@
     <string name="sound_mute">قطع صدا اسپیکر</string>
     <string name="sound_unmute">وصل صدا اسپیکر</string>
     <string name="whisper">نجوا</string>
+    <string name="whisper_text_only">نجوا فقط متنی است؛ صدای کانال تا پایان نجوا متوقف می‌شود.</string>
     <string name="stop_whisper">توقف نجوا</string>
     <string name="tab_channel">کانال</string>
     <string name="tab_private">پیام خصوصی</string>
@@ -131,6 +132,13 @@
     <string name="image">تصویر</string>
     <string name="file_attachment_info">%1$s \u00B7 فایل اشتراکی</string>
     <string name="file_attachment_server">%1$s \u00B7 فایل سرور</string>
+    <string name="file_download_failed">دانلود این فایل ناموفق بود.</string>
+    <string name="file_list_failed">دریافت فهرست فایل‌ها ناموفق بود. اتصال و دسترسی‌ها را بررسی کنید.</string>
+    <string name="tap_to_retry">برای تلاش دوباره لمس کنید</string>
+    <string name="file_share_failed">اشتراک‌گذاری فایل ناموفق بود. اتصال و دسترسی‌ها را بررسی کنید.</string>
+    <string name="file_upload_failed">بارگذاری فایل ناموفق بود. اتصال و دسترسی‌ها را بررسی کنید.</string>
+    <string name="file_selection_failed">استفاده از فایل انتخاب‌شده ناموفق بود. ممکن است اتصال یا مقصد تغییر کرده باشد.</string>
+    <string name="file_too_large">فایلی با حجم حداکثر ۱۰ مگابایت انتخاب کنید.</string>
     <string name="download_not_supported">دانلود پشتیبانی نمی‌شود</string>
     <string name="tap_to_download">برای دانلود لمس کنید</string>
     <string name="tap_to_view">برای مشاهده لمس کنید</string>
@@ -208,4 +216,6 @@
     <string name="friend_add">افزودن دوست</string>
     <string name="friend_remove">حذف دوست</string>
     <string name="user_volume">حجم صدای کاربر</string>
+    <string name="chat_send_failed">پیام ارسال نشد. متن شما حفظ شده است.</string>
+    <string name="chat_send_partial">برخی پیام‌ها ارسال نشدند. پیش از تلاش دوباره، گفتگوها را بررسی کنید.</string>
 </resources>
